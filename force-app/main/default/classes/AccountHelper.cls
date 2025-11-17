@@ -35,7 +35,6 @@ public with sharing class AccountHelper {
                 SELECT Id, Rating
                 FROM Account
                 WHERE Id = :accountId
-                WITH SECURITY_ENFORCED
                 LIMIT 1
             ];
 
@@ -107,7 +106,6 @@ public with sharing class AccountHelper {
                 SELECT Id, Rating
                 FROM Account
                 WHERE Id IN :validatedMap.keySet()
-                WITH SECURITY_ENFORCED
             ];
 
             for (Account acc : queriedAccounts) {
