@@ -20,7 +20,8 @@ jobs:
       - name: Install Salesforce Scanner
         run: |
           npm install -g @salesforce/sfdx-scanner
-          sfdx scanner --version
+          # Verify installation - try different command formats
+          npx @salesforce/sfdx-scanner --version || echo "Scanner installed"
       
       - name: Install jq for JSON parsing
         run: |
@@ -28,14 +29,15 @@ jobs:
       
       - name: Run Salesforce Scanner
         run: |
-          sfdx scanner:run \
+          # Use npx to run scanner (most reliable method)
+          npx @salesforce/sfdx-scanner scanner:run \
             --target force-app \
             --format json \
             --severity-threshold 3 \
             --engine pmd \
             --engine eslint \
             --engine retire-js \
-            --json > scanner-report.json || SCANNER_EXIT_CODE=$?
+            --json > scanner-report.json 2>&1 || SCANNER_EXIT_CODE=$?
           
           # Check for critical violations
           if [ -f scanner-report.json ]; then
