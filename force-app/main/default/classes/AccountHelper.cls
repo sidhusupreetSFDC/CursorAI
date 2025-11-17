@@ -31,26 +31,22 @@ public with sharing class AccountHelper {
         }
         
         try {
-            // Query account with FLS check
-            if (!Schema.sObjectType.Account.fields.Rating.isUpdateable()) {
-                return false;
-            }
-            
             List<Account> accounts = [
-                SELECT Id, Rating 
-                FROM Account 
-                WHERE Id = :accountId 
+                SELECT Id, Rating
+                FROM Account
+                WHERE Id = :accountId
+                WITH SECURITY_ENFORCED
                 LIMIT 1
             ];
-            
+
             if (accounts.isEmpty()) {
                 return false;
             }
-            
+
             Account acc = accounts[0];
             acc.Rating = rating;
             update acc;
-            
+
             return true;
         } catch (Exception e) {
             // Log error and return false
@@ -80,15 +76,7 @@ public with sharing class AccountHelper {
                 'Provided: ' + accountRatingMap.size()
             );
         }
-        
-        // Validate FLS
-        if (!Schema.sObjectType.Account.fields.Rating.isUpdateable()) {
-            for (Id accountId : accountRatingMap.keySet()) {
-                results.put(accountId, 'Error: No permission to update Rating field');
-            }
-            return results;
-        }
-        
+
         // Pre-validate all ratings
         Map<Id, String> validatedMap = new Map<Id, String>();
         for (Id accountId : accountRatingMap.keySet()) {
@@ -116,22 +104,23 @@ public with sharing class AccountHelper {
         Map<Id, Account> accountsToUpdate = new Map<Id, Account>();
         try {
             List<Account> queriedAccounts = [
-                SELECT Id, Rating 
-                FROM Account 
+                SELECT Id, Rating
+                FROM Account
                 WHERE Id IN :validatedMap.keySet()
+                WITH SECURITY_ENFORCED
             ];
-            
+
             for (Account acc : queriedAccounts) {
                 accountsToUpdate.put(acc.Id, acc);
             }
-            
+
             // Check for non-existent accounts
             for (Id accountId : validatedMap.keySet()) {
                 if (!accountsToUpdate.containsKey(accountId)) {
                     results.put(accountId, 'Error: Account not found');
                 }
             }
-            
+
         } catch (Exception e) {
             for (Id accountId : validatedMap.keySet()) {
                 results.put(accountId, 'Error: ' + e.getMessage());

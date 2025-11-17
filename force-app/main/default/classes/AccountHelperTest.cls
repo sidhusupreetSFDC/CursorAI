@@ -275,7 +275,7 @@ private class AccountHelperTest {
         
         // Assert: Should have error message for that account
         System.assertEquals(1, results.size(), 'Should have one result');
-        System.assert(results.get(fakeId).contains('not found'), 
+        System.assert(results.get(fakeId).contains('Account not found'),
             'Error message should indicate account not found');
     }
     
@@ -323,7 +323,8 @@ private class AccountHelperTest {
         Test.stopTest();
         
         // Assert: Should have error for blank rating
-        System.assert(results.get(testAccount.Id).contains('cannot be blank'), 
+        System.assertEquals(1, results.size(), 'Should have one result');
+        System.assert(results.get(testAccount.Id).contains('blank'),
             'Should have error message for blank rating');
     }
     
@@ -403,23 +404,27 @@ private class AccountHelperTest {
      */
     @isTest
     static void testRatingValidation() {
-        // Arrange: Create a test account
-        Account testAccount = new Account(Name = 'Rating Validation Test');
-        insert testAccount;
-        
+        // Arrange: Create test accounts for each validation test
+        Account testAccount1 = new Account(Name = 'Rating Validation Test Hot');
+        Account testAccount2 = new Account(Name = 'Rating Validation Test Warm');
+        Account testAccount3 = new Account(Name = 'Rating Validation Test Cold');
+        Account testAccount4 = new Account(Name = 'Rating Validation Test Invalid');
+        List<Account> testAccounts = new List<Account>{testAccount1, testAccount2, testAccount3, testAccount4};
+        insert testAccounts;
+
         Test.startTest();
         // Act & Assert: Valid ratings should succeed
-        Boolean hotResult = AccountHelper.updateAccountRating(testAccount.Id, VALID_RATING_HOT);
+        Boolean hotResult = AccountHelper.updateAccountRating(testAccount1.Id, VALID_RATING_HOT);
         System.assertEquals(true, hotResult, 'Hot should be valid');
-        
-        Boolean warmResult = AccountHelper.updateAccountRating(testAccount.Id, VALID_RATING_WARM);
+
+        Boolean warmResult = AccountHelper.updateAccountRating(testAccount2.Id, VALID_RATING_WARM);
         System.assertEquals(true, warmResult, 'Warm should be valid');
-        
-        Boolean coldResult = AccountHelper.updateAccountRating(testAccount.Id, VALID_RATING_COLD);
+
+        Boolean coldResult = AccountHelper.updateAccountRating(testAccount3.Id, VALID_RATING_COLD);
         System.assertEquals(true, coldResult, 'Cold should be valid');
-        
+
         // Invalid rating should fail
-        Boolean invalidResult = AccountHelper.updateAccountRating(testAccount.Id, 'SuperHot');
+        Boolean invalidResult = AccountHelper.updateAccountRating(testAccount4.Id, 'SuperHot');
         System.assertEquals(false, invalidResult, 'SuperHot should be invalid');
         Test.stopTest();
     }
