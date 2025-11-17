@@ -23,14 +23,66 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
+      - name: Install required tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip curl
+      
       - name: Install PMD
         run: |
-          PMD_VERSION="7.0.0"
-          wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip
-          unzip -q pmd-bin-${PMD_VERSION}.zip
-          sudo mv pmd-bin-${PMD_VERSION} /opt/pmd
-          sudo ln -s /opt/pmd/bin/pmd /usr/local/bin/pmd
-          pmd --version
+          # Use a stable PMD version (6.55.0 is a known working version)
+          PMD_VERSION="6.55.0"
+          
+          echo "Downloading PMD ${PMD_VERSION}..."
+          
+          # Download PMD binary distribution
+          if ! wget -q --show-progress -O pmd-bin.zip \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases/${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip"; then
+            echo "❌ Failed to download PMD ${PMD_VERSION}"
+            echo "Trying alternative download method with curl..."
+            if ! curl -L -f -o pmd-bin.zip \
+              "https://github.com/pmd/pmd/releases/download/pmd_releases/${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip"; then
+              echo "❌ All download methods failed"
+              exit 1
+            fi
+          fi
+          
+          # Verify download
+          if [ ! -f pmd-bin.zip ] || [ ! -s pmd-bin.zip ]; then
+            echo "❌ Downloaded file is empty or missing"
+            exit 1
+          fi
+          
+          echo "Extracting PMD..."
+          unzip -q pmd-bin.zip || {
+            echo "❌ Failed to extract PMD zip file"
+            file pmd-bin.zip
+            exit 1
+          }
+          
+          # Find the extracted directory
+          PMD_DIR=$(find . -maxdepth 1 -type d -name "pmd-bin-*" | head -1)
+          if [ -z "$PMD_DIR" ] || [ ! -d "$PMD_DIR" ]; then
+            echo "❌ Failed to find extracted PMD directory"
+            echo "Contents:"
+            ls -la
+            exit 1
+          fi
+          
+          echo "Installing PMD to /opt/pmd..."
+          sudo mv "$PMD_DIR" /opt/pmd
+          sudo chmod +x /opt/pmd/bin/pmd
+          sudo ln -sf /opt/pmd/bin/pmd /usr/local/bin/pmd
+          
+          # Verify installation
+          if /opt/pmd/bin/pmd --version; then
+            echo "✅ PMD ${PMD_VERSION} installed successfully"
+            /opt/pmd/bin/pmd --version
+          else
+            echo "⚠️ PMD installed but version check failed"
+            ls -la /opt/pmd/bin/
+            exit 1
+          fi
       
       - name: Install Salesforce Scanner
         run: |
