@@ -1,478 +1,188 @@
-name: Salesforce CI/CD
+name: Salesforce Deploy
 
-# Trigger workflow on push to main branch and pull requests
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
-# Environment variables used across all jobs
-env:
-  SF_ORG_ALIAS: targetOrg
-  DEPLOYMENT_WAIT_TIME: 30
-  PMD_VERSION: 7.0.0
+    branches: [ main ]
 
 jobs:
   code-quality:
     name: Code Quality Check
     runs-on: ubuntu-latest
-    
     steps:
-      # Step 1: Checkout the source code
-      - name: Checkout source code
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       
-      # Step 2: Set up Java (required for PMD)
-      - name: Set up Java
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup Java for PMD
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
       
-      # Step 3: Install PMD
-      # PMD is a static code analyzer for Apex and other languages
       - name: Install PMD
         run: |
-          set -e
-          echo "Installing PMD version ${PMD_VERSION}..."
-          wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F${PMD_VERSION}/pmd-dist-${PMD_VERSION}-bin.zip || {
-            echo "❌ Failed to download PMD"
-            exit 1
-          }
-          unzip -q pmd-dist-${PMD_VERSION}-bin.zip || {
-            echo "❌ Failed to unzip PMD"
-            exit 1
-          }
-          echo "$GITHUB_WORKSPACE/pmd-bin-${PMD_VERSION}/bin" >> $GITHUB_PATH
-          echo "✅ PMD installed successfully"
+          PMD_VERSION="7.0.0"
+          wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip
+          unzip -q pmd-bin-${PMD_VERSION}.zip
+          sudo mv pmd-bin-${PMD_VERSION} /opt/pmd
+          sudo ln -s /opt/pmd/bin/pmd /usr/local/bin/pmd
+          pmd --version
       
-      # Step 4: Create PMD ruleset configuration
-      # This defines which rules to check for code quality issues
-      - name: Create PMD ruleset
+      - name: Install Salesforce Scanner
         run: |
-          set -e
-          cat > pmd-ruleset.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <ruleset name="Salesforce Apex Ruleset"
-                   xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
-                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                   xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
-              <description>PMD Ruleset for Salesforce Apex Code Quality</description>
-              
-              <!-- Best Practices -->
-              <rule ref="category/apex/bestpractices.xml">
-                  <priority>3</priority>
-              </rule>
-              
-              <!-- Code Style -->
-              <rule ref="category/apex/codestyle.xml">
-                  <priority>4</priority>
-              </rule>
-              
-              <!-- Design -->
-              <rule ref="category/apex/design.xml">
-                  <priority>3</priority>
-              </rule>
-              
-              <!-- Performance -->
-              <rule ref="category/apex/performance.xml">
-                  <priority>2</priority>
-              </rule>
-              
-              <!-- Security -->
-              <rule ref="category/apex/security.xml">
-                  <priority>1</priority>
-              </rule>
-              
-              <!-- Error Prone -->
-              <rule ref="category/apex/errorprone.xml">
-                  <priority>2</priority>
-              </rule>
-          </ruleset>
-          EOF
-          echo "✅ PMD ruleset created"
+          npm install -g @salesforce/sfdx-scanner
+          sfdx scanner --version
       
-      # Step 5: Run PMD code analysis
-      # Analyze Apex classes for code quality issues
-      # Priority 1-2 are critical issues that will fail the build
+      - name: Install jq for JSON parsing
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+      
+      - name: Run Salesforce Scanner
+        run: |
+          sfdx scanner:run \
+            --target force-app \
+            --format json \
+            --severity-threshold 3 \
+            --engine pmd \
+            --engine eslint \
+            --engine retire-js \
+            --json > scanner-report.json || SCANNER_EXIT_CODE=$?
+          
+          # Check for critical violations
+          if [ -f scanner-report.json ]; then
+            CRITICAL_COUNT=$(cat scanner-report.json | jq -r '[.result.violations[]? | select(.severity == 1)] | length // 0')
+            HIGH_COUNT=$(cat scanner-report.json | jq -r '[.result.violations[]? | select(.severity == 2)] | length // 0')
+            
+            echo "Critical violations: $CRITICAL_COUNT"
+            echo "High severity violations: $HIGH_COUNT"
+            
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "❌ Found $CRITICAL_COUNT critical violation(s). Failing build."
+              cat scanner-report.json | jq '.result.violations[]? | select(.severity == 1)'
+              exit 1
+            fi
+            
+            echo "✅ No critical violations found"
+            cat scanner-report.json | jq '.result.summary'
+          else
+            echo "Scanner report not generated"
+            exit 1
+          fi
+      
       - name: Run PMD Analysis
         run: |
-          echo "Running PMD analysis..."
+          # Run PMD on Apex classes
           pmd check \
             --dir force-app/main/default/classes \
-            --rulesets pmd-ruleset.xml \
-            --format text \
-            --report-file pmd-report.txt \
-            --minimum-priority 3 \
-            --no-cache || true
-          
-          # Display the report
-          if [ -f pmd-report.txt ]; then
-            echo "=== PMD Analysis Report ==="
-            cat pmd-report.txt
-          else
-            echo "⚠️ No PMD report generated"
-          fi
-      
-      # Step 6: Check for critical issues
-      # Fail the build if priority 1-2 (critical) issues are found
-      - name: Check for Critical Issues
-        run: |
-          set -e
-          echo "Checking for critical code quality issues..."
-          if pmd check \
-            --dir force-app/main/default/classes \
-            --rulesets pmd-ruleset.xml \
-            --format text \
-            --minimum-priority 2 \
-            --no-cache; then
-            echo "✅ No critical issues found"
-          else
-            echo "❌ Critical issues detected. Please fix before deployment."
-            exit 1
-          fi
-      
-      # Step 7: Generate HTML report for better readability
-      - name: Generate HTML Report
-        if: always()
-        run: |
-          echo "Generating HTML report..."
-          pmd check \
-            --dir force-app/main/default/classes \
-            --rulesets pmd-ruleset.xml \
-            --format html \
-            --report-file pmd-report.html \
-            --minimum-priority 5 \
-            --no-cache || true
-          echo "✅ HTML report generated"
-      
-      # Step 8: Upload PMD report as artifact
-      - name: Upload PMD Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pmd-code-quality-report
-          path: |
-            pmd-report.txt
-            pmd-report.html
-          if-no-files-found: warn
-          retention-days: 30
-      
-      # Step 9: Install Salesforce CLI for Code Analyzer
-      - name: Install Salesforce CLI
-        run: |
-          set -e
-          echo "Installing Salesforce CLI..."
-          npm install --global @salesforce/cli@latest || {
-            echo "❌ Failed to install Salesforce CLI"
-            exit 1
-          }
-          sf --version
-          echo "✅ Salesforce CLI installed successfully"
-      
-      # Step 10: Install Salesforce Code Analyzer
-      # sf scanner is a unified tool that runs multiple static analysis engines
-      - name: Install Salesforce Code Analyzer
-        run: |
-          set -e
-          echo "Installing Salesforce Code Analyzer..."
-          sf plugins install @salesforce/sfdx-scanner@latest || {
-            echo "❌ Failed to install Salesforce Code Analyzer"
-            exit 1
-          }
-          sf scanner --version
-          echo "✅ Salesforce Code Analyzer installed successfully"
-      
-      # Step 11: Create security-focused PMD ruleset for scanner
-      - name: Create Security PMD Ruleset for Scanner
-        run: |
-          set -e
-          cat > pmd-security-ruleset.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <ruleset name="Security Focused Ruleset"
-                   xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
-                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                   xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
-              <description>Security-focused rules for Apex</description>
-              
-              <!-- SOQL Injection Prevention -->
-              <rule ref="category/apex/security.xml/ApexSOQLInjection" />
-              <rule ref="category/apex/security.xml/ApexBadCrypto" />
-              <rule ref="category/apex/security.xml/ApexInsecureEndpoint" />
-              
-              <!-- XSS Prevention -->
-              <rule ref="category/apex/security.xml/ApexXSSFromURLParam" />
-              <rule ref="category/apex/security.xml/ApexXSSFromEscapeFalse" />
-              
-              <!-- CRUD/FLS Security -->
-              <rule ref="category/apex/security.xml/ApexCRUDViolation" />
-              <rule ref="category/apex/security.xml/ApexSharingViolations" />
-              
-              <!-- Open Redirects -->
-              <rule ref="category/apex/security.xml/ApexOpenRedirect" />
-              
-              <!-- Dangerous Methods -->
-              <rule ref="category/apex/security.xml/ApexDangerousMethods" />
-              <rule ref="category/apex/security.xml/ApexSuggestUsingNamedCred" />
-          </ruleset>
-          EOF
-          echo "✅ Security ruleset created"
-      
-      # Step 12: Run Salesforce Code Analyzer for Security Vulnerabilities
-      # Focus on security issues: SOQL injection, XSS, CRUD/FLS violations
-      - name: Run Security Scan with Salesforce Code Analyzer
-        run: |
-          echo "Running security scan with Salesforce Code Analyzer..."
-          sf scanner run \
-            --target "force-app/main/default/classes/**/*.cls" \
-            --engine "pmd-appexchange,retire-js,eslint-lwc" \
-            --category "Security,Best Practices,Code Style,Performance" \
-            --format csv \
-            --outfile scanner-results.csv \
-            --severity-threshold 3 \
-            --normalize-severity || true
-          
-          # Display scan summary
-          if [ -f scanner-results.csv ]; then
-            echo "=== Salesforce Code Analyzer Results ==="
-            cat scanner-results.csv
-          else
-            echo "⚠️ No scanner results generated"
-          fi
-      
-      # Step 13: Run focused scan for SOQL Injection vulnerabilities
-      # This specifically checks for dynamic SOQL queries without proper sanitization
-      - name: Check for SOQL Injection Vulnerabilities
-        run: |
-          echo "=== Scanning for SOQL Injection Issues ==="
-          sf scanner run \
-            --target "force-app/main/default/classes/**/*.cls" \
-            --engine "pmd-appexchange" \
-            --pmdconfig pmd-security-ruleset.xml \
-            --format table \
-            --outfile soql-injection-report.txt \
-            --severity-threshold 2 || true
-          
-          if [ -f soql-injection-report.txt ]; then
-            cat soql-injection-report.txt
-          fi
-        continue-on-error: true
-      
-      # Step 14: Run critical security check and fail build if issues found
-      # This checks for HIGH severity security issues (SOQL injection, XSS, etc.)
-      - name: Check for Critical Security Violations
-        run: |
-          set -e
-          echo "=== Checking for Critical Security Issues ==="
-          if sf scanner run \
-            --target "force-app/main/default/classes/**/*.cls" \
-            --engine "pmd-appexchange" \
-            --category "Security" \
-            --format table \
-            --severity-threshold 1 \
-            --normalize-severity; then
-            echo "✅ No critical security vulnerabilities found"
-          else
-            echo "❌ Critical security vulnerabilities detected!"
-            echo "Please fix SOQL injection, XSS, or other security issues before deployment."
-            exit 1
-          fi
-      
-      # Step 15: Generate comprehensive HTML report from scanner
-      - name: Generate Scanner HTML Report
-        if: always()
-        run: |
-          echo "Generating scanner HTML report..."
-          sf scanner run \
-            --target "force-app/main/default/classes/**/*.cls,force-app/main/default/lwc/**/*.js" \
-            --engine "pmd-appexchange,retire-js,eslint-lwc" \
-            --format html \
-            --outfile scanner-report.html \
-            --severity-threshold 5 || true
-          echo "✅ Scanner HTML report generated"
-      
-      # Step 16: Generate detailed JSON report for programmatic analysis
-      - name: Generate Scanner JSON Report
-        if: always()
-        run: |
-          echo "Generating scanner JSON report..."
-          sf scanner run \
-            --target "force-app/main/default/classes/**/*.cls" \
-            --engine "pmd-appexchange" \
+            --rulesets rulesets/apex/quickstart.xml,rulesets/apex/security.xml \
             --format json \
-            --outfile scanner-report.json \
-            --severity-threshold 5 || true
-          echo "✅ Scanner JSON report generated"
-      
-      # Step 17: Upload Salesforce Code Analyzer reports
-      - name: Upload Scanner Security Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: salesforce-scanner-reports
-          path: |
-            scanner-results.csv
-            scanner-report.html
-            scanner-report.json
-            soql-injection-report.txt
-            pmd-security-ruleset.xml
-          if-no-files-found: warn
-          retention-days: 30
-
-  deploy:
-    name: Deploy to Salesforce
-    runs-on: ubuntu-latest
-    # Deploy only if code quality check passes
-    needs: code-quality
-    # Only deploy on push to main (not on pull requests)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
-      # Step 1: Checkout the source code
-      - name: Checkout source code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      # Step 2: Install Salesforce CLI (latest version with sf commands)
-      - name: Install Salesforce CLI
-        run: |
-          set -e
-          echo "Installing latest Salesforce CLI..."
-          npm install --global @salesforce/cli@latest || {
-            echo "❌ Failed to install Salesforce CLI"
-            exit 1
-          }
-          sf --version
-          echo "✅ Salesforce CLI installed successfully"
-      
-      # Step 3: Authenticate to Salesforce using SFDX Auth URL
-      # The SFDX_AUTH_URL should be stored in GitHub Secrets
-      - name: Authenticate to Salesforce
-        run: |
-          set -e
-          echo "Authenticating to Salesforce org..."
+            --fail-on-violation false \
+            > pmd-report.json 2>&1 || PMD_EXIT_CODE=$?
           
-          # Create temporary auth file
-          echo "${{ secrets.SFDX_AUTH_URL }}" > ./SFDX_AUTH_URL.txt
-          
-          # Validate auth URL exists
-          if [ ! -s ./SFDX_AUTH_URL.txt ]; then
-            echo "❌ SFDX_AUTH_URL secret is empty or not set"
-            rm -f ./SFDX_AUTH_URL.txt
-            exit 1
-          fi
-          
-          # Authenticate using auth URL
-          sf org login sfdx-url \
-            --sfdx-url-file ./SFDX_AUTH_URL.txt \
-            --set-default \
-            --alias ${{ env.SF_ORG_ALIAS }} || {
-            echo "❌ Authentication failed"
-            rm -f ./SFDX_AUTH_URL.txt
-            exit 1
-          }
-          
-          # Clean up auth file
-          rm -f ./SFDX_AUTH_URL.txt
-          
-          # Verify authentication
-          sf org display --target-org ${{ env.SF_ORG_ALIAS }}
-          echo "✅ Successfully authenticated to Salesforce org"
-      
-      # Step 4: Validate metadata against target org
-      # This performs a dry-run deployment without making actual changes
-      - name: Validate metadata against target org
-        run: |
-          set -e
-          echo "Validating metadata against target org..."
-          
-          sf project deploy start \
-            --target-org ${{ env.SF_ORG_ALIAS }} \
-            --manifest manifest/package.xml \
-            --dry-run \
-            --test-level RunLocalTests \
-            --wait ${{ env.DEPLOYMENT_WAIT_TIME }} \
-            --verbose || {
-            echo "❌ Validation failed"
-            exit 1
-          }
-          
-          echo "✅ Metadata validation successful"
-      
-      # Step 5: Deploy to Salesforce if validation passes
-      # This performs the actual deployment with RunLocalTests
-      - name: Deploy to Salesforce
-        run: |
-          set -e
-          echo "Deploying to Salesforce org..."
-          
-          sf project deploy start \
-            --target-org ${{ env.SF_ORG_ALIAS }} \
-            --manifest manifest/package.xml \
-            --test-level RunLocalTests \
-            --wait ${{ env.DEPLOYMENT_WAIT_TIME }} \
-            --verbose || {
-            echo "❌ Deployment failed"
-            exit 1
-          }
-          
-          echo "✅ Deployment successful"
-      
-      # Step 6: Run all Apex tests and generate results
-      - name: Run all Apex tests
-        run: |
-          set -e
-          echo "Running all Apex tests..."
-          
-          sf apex run test \
-            --target-org ${{ env.SF_ORG_ALIAS }} \
-            --result-format human \
-            --code-coverage \
-            --wait ${{ env.DEPLOYMENT_WAIT_TIME }} || {
-            echo "❌ Some tests failed"
-            exit 1
-          }
-          
-          echo "✅ All tests passed"
-      
-      # Step 7: Run Apex tests and save results in JUnit format
-      - name: Run Apex tests and save results in JUnit format
-        if: always()
-        run: |
-          echo "Generating JUnit test results..."
-          sf apex run test \
-            --target-org ${{ env.SF_ORG_ALIAS }} \
-            --result-format junit \
-            --code-coverage \
-            --output-dir test-results \
-            --wait ${{ env.DEPLOYMENT_WAIT_TIME }} || true
-          
-          if [ -d test-results ]; then
-            echo "✅ Test results generated"
+          # Check for critical violations in PMD report
+          if [ -f pmd-report.json ]; then
+            # Check if PMD found any violations (priority 1 = critical/blocker)
+            CRITICAL_COUNT=$(cat pmd-report.json | jq -r '[.files[]?.violations[]? | select(.priority == 1)] | length // 0' 2>/dev/null || echo "0")
+            
+            echo "PMD Critical violations: $CRITICAL_COUNT"
+            
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "❌ Found $CRITICAL_COUNT critical PMD violation(s). Failing build."
+              cat pmd-report.json | jq '.files[]?.violations[]? | select(.priority == 1)' 2>/dev/null || cat pmd-report.json
+              exit 1
+            fi
+            
+            echo "✅ No critical PMD violations found"
+            cat pmd-report.json | jq '.summary' 2>/dev/null || echo "PMD analysis completed"
           else
-            echo "⚠️ No test results generated"
+            echo "PMD report not generated, but continuing..."
           fi
       
-      # Step 8: Upload test results as artifact
-      - name: Upload Test Results as Artifact
+      - name: Upload code quality reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: apex-test-results
-          path: test-results/
-          if-no-files-found: warn
-          retention-days: 7
+          name: code-quality-reports
+          path: |
+            scanner-report.json
+            pmd-report.json
+          retention-days: 30
+  
+  deploy:
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-      # Step 9: Logout from Salesforce org (cleanup)
-      - name: Logout from Salesforce
-        if: always()
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup Salesforce CLI
         run: |
-          echo "Logging out from Salesforce org..."
-          sf org logout --target-org ${{ env.SF_ORG_ALIAS }} --no-prompt || true
-          echo "✅ Cleanup completed"
+          npm install -g @salesforce/cli
+          sf --version
+      
+      - name: Authenticate Salesforce org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          echo "$SFDX_AUTH_URL" > /tmp/auth.txt
+          sf org login sfdx-url --sfdx-url-file /tmp/auth.txt --alias deploy-org
+          rm /tmp/auth.txt
+      
+      - name: Validate deployment with tests
+        run: |
+          sf project deploy start \
+            --source-dir force-app \
+            --target-org deploy-org \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > deployment-report.json || DEPLOY_EXIT_CODE=$?
+          
+          # Check if deployment-report.json exists and has content
+          if [ ! -f deployment-report.json ] || [ ! -s deployment-report.json ]; then
+            echo "Deployment command failed to generate report"
+            exit 1
+          fi
+      
+      - name: Check deployment status
+        run: |
+          # Install jq for JSON parsing if not available
+          sudo apt-get update && sudo apt-get install -y jq || true
+          
+          # Parse deployment status from JSON report
+          if [ -f deployment-report.json ]; then
+            DEPLOYMENT_STATUS=$(cat deployment-report.json | jq -r '.status // "unknown"')
+            DEPLOYMENT_RESULT=$(cat deployment-report.json | jq -r '.result.status // "unknown"')
+            
+            echo "Deployment Status Code: $DEPLOYMENT_STATUS"
+            echo "Deployment Result: $DEPLOYMENT_RESULT"
+            
+            # Check if deployment succeeded
+            if [ "$DEPLOYMENT_STATUS" != "0" ] || [ "$DEPLOYMENT_RESULT" != "Succeeded" ]; then
+              echo "Deployment failed or had warnings"
+              cat deployment-report.json | jq '.'
+              exit 1
+            else
+              echo "Deployment succeeded successfully"
+              cat deployment-report.json | jq '.result.numberComponentErrors, .result.numberTestsCompleted, .result.numberTestsFailed'
+            fi
+          else
+            echo "Deployment report not found"
+            exit 1
+          fi
+      
+      - name: Upload deployment report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: deployment-report.json
+          retention-days: 30

@@ -1,168 +1,190 @@
 /**
  * @description Helper class for Account-related operations
+ * Provides methods to update account ratings with proper validation and error handling
  * @author Salesforce Dev Team
  * @date 2025
  */
-public class AccountHelper {
+public with sharing class AccountHelper {
     
-    // Custom exception for AccountHelper operations
-    public class AccountHelperException extends Exception {}
+    // Valid rating values for Account.Rating field
+    private static final Set<String> VALID_RATINGS = new Set<String>{'Hot', 'Warm', 'Cold'};
+    private static final Integer MAX_BULK_RECORDS = 200;
     
     /**
-     * @description Updates the rating for multiple accounts (bulkified)
-     * @param accountRatingMap Map of Account IDs to Rating values
-     * @return Map of Account IDs to success/failure status
+     * @description Updates a single account's rating with validation
+     * @param accountId The ID of the account to update
+     * @param rating The new rating value (Hot, Warm, or Cold)
+     * @return Boolean True if update successful, false otherwise
      */
-    public static Map<Id, String> updateAccountRatings(Map<Id, String> accountRatingMap) {
-        // Result map to track success/failure for each account
-        Map<Id, String> resultMap = new Map<Id, String>();
-        
-        // Null and empty check
-        if (accountRatingMap == null || accountRatingMap.isEmpty()) {
-            System.debug('AccountHelper.updateAccountRatings: No accounts provided');
-            return resultMap;
+    public static Boolean updateAccountRating(Id accountId, String rating) {
+        // Validate inputs
+        if (accountId == null) {
+            return false;
         }
         
-        // Validate input size for governor limits
-        if (accountRatingMap.size() > 200) {
-            throw new AccountHelperException('Cannot process more than 200 accounts at once. Received: ' + accountRatingMap.size());
+        if (String.isBlank(rating)) {
+            return false;
+        }
+        
+        if (!isValidRating(rating)) {
+            return false;
         }
         
         try {
-            // Bulkified SOQL query - retrieve all accounts in one query
-            Set<Id> accountIds = accountRatingMap.keySet();
-            Map<Id, Account> accountsToUpdate = new Map<Id, Account>(
-                [SELECT Id, Rating FROM Account WHERE Id IN :accountIds]
-            );
-            
-            // Validate that all requested accounts exist
-            for (Id accountId : accountIds) {
-                if (!accountsToUpdate.containsKey(accountId)) {
-                    resultMap.put(accountId, 'Error: Account not found');
-                    System.debug('Account not found: ' + accountId);
-                }
+            // Query account with FLS check
+            if (!Schema.sObjectType.Account.fields.Rating.isUpdateable()) {
+                return false;
             }
             
-            // Prepare accounts for update
-            List<Account> accountsForUpdate = new List<Account>();
-            for (Id accountId : accountsToUpdate.keySet()) {
-                String newRating = accountRatingMap.get(accountId);
-                
-                // Validate rating value
-                if (String.isBlank(newRating)) {
-                    resultMap.put(accountId, 'Error: Rating cannot be blank');
-                    continue;
-                }
-                
-                // Validate rating is a valid picklist value
-                if (!isValidRating(newRating)) {
-                    resultMap.put(accountId, 'Error: Invalid rating value - ' + newRating);
-                    continue;
-                }
-                
-                Account acc = accountsToUpdate.get(accountId);
-                acc.Rating = newRating;
-                accountsForUpdate.add(acc);
+            List<Account> accounts = [
+                SELECT Id, Rating 
+                FROM Account 
+                WHERE Id = :accountId 
+                LIMIT 1
+            ];
+            
+            if (accounts.isEmpty()) {
+                return false;
             }
             
-            // Bulkified DML operation with error handling
-            if (!accountsForUpdate.isEmpty()) {
-                Database.SaveResult[] saveResults = Database.update(accountsForUpdate, false);
-                
-                // Process save results
-                for (Integer i = 0; i < saveResults.size(); i++) {
-                    Database.SaveResult sr = saveResults[i];
-                    Id accountId = accountsForUpdate[i].Id;
-                    
-                    if (sr.isSuccess()) {
-                        resultMap.put(accountId, 'Success');
-                    } else {
-                        // Collect all error messages
-                        String errorMsg = 'Error: ';
-                        for (Database.Error err : sr.getErrors()) {
-                            errorMsg += err.getMessage() + '; ';
-                        }
-                        resultMap.put(accountId, errorMsg);
-                        System.debug('Failed to update Account ' + accountId + ': ' + errorMsg);
-                    }
-                }
-            }
+            Account acc = accounts[0];
+            acc.Rating = rating;
+            update acc;
             
-        } catch (QueryException qe) {
-            System.debug(LoggingLevel.ERROR, 'Query Exception in updateAccountRatings: ' + qe.getMessage());
-            throw new AccountHelperException('Database query failed: ' + qe.getMessage());
+            return true;
         } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'Exception in updateAccountRatings: ' + e.getMessage() + ' | Stack Trace: ' + e.getStackTraceString());
-            throw new AccountHelperException('Failed to update accounts: ' + e.getMessage());
-        }
-        
-        return resultMap;
-    }
-    
-    /**
-     * @description Convenience method to update a single account rating
-     * @param accountId The Account ID to update
-     * @param rating The new rating value
-     * @return Boolean indicating success or failure
-     */
-    public static Boolean updateAccountRating(Id accountId, String rating) {
-        // Null checks
-        if (accountId == null) {
-            System.debug('AccountHelper.updateAccountRating: Account ID cannot be null');
+            // Log error and return false
+            System.debug(LoggingLevel.ERROR, 'Error updating account rating: ' + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * @description Updates multiple accounts' ratings in a bulkified manner
+     * @param accountRatingMap Map of Account IDs to new rating values
+     * @return Map<Id, String> Map of Account IDs to result messages ('Success' or error message)
+     * @throws AccountHelperException if input exceeds maximum record limit
+     */
+    public static Map<Id, String> updateAccountRatings(Map<Id, String> accountRatingMap) {
+        Map<Id, String> results = new Map<Id, String>();
         
-        if (String.isBlank(rating)) {
-            System.debug('AccountHelper.updateAccountRating: Rating cannot be blank');
-            return false;
+        // Validate inputs
+        if (accountRatingMap == null || accountRatingMap.isEmpty()) {
+            return results;
         }
         
-        // Use the bulkified method
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        accountRatingMap.put(accountId, rating);
+        // Check record limit
+        if (accountRatingMap.size() > MAX_BULK_RECORDS) {
+            throw new AccountHelperException(
+                'Cannot process more than ' + MAX_BULK_RECORDS + ' records at once. ' +
+                'Provided: ' + accountRatingMap.size()
+            );
+        }
         
-        Map<Id, String> results = updateAccountRatings(accountRatingMap);
+        // Validate FLS
+        if (!Schema.sObjectType.Account.fields.Rating.isUpdateable()) {
+            for (Id accountId : accountRatingMap.keySet()) {
+                results.put(accountId, 'Error: No permission to update Rating field');
+            }
+            return results;
+        }
         
-        // Return true if the result is "Success"
-        return results.containsKey(accountId) && results.get(accountId) == 'Success';
+        // Pre-validate all ratings
+        Map<Id, String> validatedMap = new Map<Id, String>();
+        for (Id accountId : accountRatingMap.keySet()) {
+            String rating = accountRatingMap.get(accountId);
+            
+            if (String.isBlank(rating)) {
+                results.put(accountId, 'Error: Rating cannot be blank');
+                continue;
+            }
+            
+            if (!isValidRating(rating)) {
+                results.put(accountId, 'Error: Invalid rating value: ' + rating);
+                continue;
+            }
+            
+            validatedMap.put(accountId, rating);
+        }
+        
+        // If no valid records, return early
+        if (validatedMap.isEmpty()) {
+            return results;
+        }
+        
+        // Query existing accounts
+        Map<Id, Account> accountsToUpdate = new Map<Id, Account>();
+        try {
+            List<Account> queriedAccounts = [
+                SELECT Id, Rating 
+                FROM Account 
+                WHERE Id IN :validatedMap.keySet()
+            ];
+            
+            for (Account acc : queriedAccounts) {
+                accountsToUpdate.put(acc.Id, acc);
+            }
+            
+            // Check for non-existent accounts
+            for (Id accountId : validatedMap.keySet()) {
+                if (!accountsToUpdate.containsKey(accountId)) {
+                    results.put(accountId, 'Error: Account not found');
+                }
+            }
+            
+        } catch (Exception e) {
+            for (Id accountId : validatedMap.keySet()) {
+                results.put(accountId, 'Error: ' + e.getMessage());
+            }
+            return results;
+        }
+        
+        // Update ratings
+        List<Account> accountsToUpdateList = new List<Account>();
+        for (Id accountId : accountsToUpdate.keySet()) {
+            Account acc = accountsToUpdate.get(accountId);
+            acc.Rating = validatedMap.get(accountId);
+            accountsToUpdateList.add(acc);
+        }
+        
+        // Perform DML with partial success handling
+        if (!accountsToUpdateList.isEmpty()) {
+            Database.SaveResult[] saveResults = Database.update(accountsToUpdateList, false);
+            
+            for (Integer i = 0; i < saveResults.size(); i++) {
+                Database.SaveResult sr = saveResults[i];
+                Account acc = accountsToUpdateList[i];
+                
+                if (sr.isSuccess()) {
+                    results.put(acc.Id, 'Success');
+                } else {
+                    String errorMsg = 'Error: ';
+                    for (Database.Error err : sr.getErrors()) {
+                        errorMsg += err.getMessage() + '; ';
+                    }
+                    results.put(acc.Id, errorMsg.trim());
+                }
+            }
+        }
+        
+        return results;
     }
     
     /**
-     * @description Validates if the rating is a valid picklist value
-     * @param rating The rating value to validate
-     * @return Boolean indicating if the rating is valid
-     */
-    @TestVisible
-    private static Boolean isValidRating(String rating) {
-        // Valid Account Rating picklist values
-        Set<String> validRatings = new Set<String>{
-            'Hot', 'Warm', 'Cold'
-        };
-        
-        return validRatings.contains(rating);
-    }
-    
-    /**
-     * @description Bulk update account ratings with list of accounts
-     * @param accounts List of accounts to update with rating
-     * @param rating The rating to apply to all accounts
-     * @return Map of Account IDs to success/failure status
+     * @description Updates ratings for a list of accounts with the same rating value
+     * @param accounts List of accounts to update
+     * @param rating The rating value to apply to all accounts
+     * @return Map<Id, String> Map of Account IDs to result messages
      */
     public static Map<Id, String> updateAccountRatingsForList(List<Account> accounts, String rating) {
-        Map<Id, String> resultMap = new Map<Id, String>();
+        Map<Id, String> results = new Map<Id, String>();
         
-        // Null and empty checks
-        if (accounts == null || accounts.isEmpty()) {
-            System.debug('AccountHelper.updateAccountRatingsForList: No accounts provided');
-            return resultMap;
+        // Validate inputs
+        if (accounts == null || accounts.isEmpty() || String.isBlank(rating)) {
+            return results;
         }
         
-        if (String.isBlank(rating)) {
-            System.debug('AccountHelper.updateAccountRatingsForList: Rating cannot be blank');
-            return resultMap;
-        }
-        
-        // Build map for bulkified processing
+        // Convert list to map
         Map<Id, String> accountRatingMap = new Map<Id, String>();
         for (Account acc : accounts) {
             if (acc.Id != null) {
@@ -170,7 +192,21 @@ public class AccountHelper {
             }
         }
         
-        // Use the bulkified method
+        // Delegate to bulk method
         return updateAccountRatings(accountRatingMap);
     }
+    
+    /**
+     * @description Validates if a rating value is one of the accepted values
+     * @param rating The rating value to validate
+     * @return Boolean True if rating is valid (Hot, Warm, or Cold)
+     */
+    private static Boolean isValidRating(String rating) {
+        return String.isNotBlank(rating) && VALID_RATINGS.contains(rating);
+    }
+    
+    /**
+     * @description Custom exception class for AccountHelper errors
+     */
+    public class AccountHelperException extends Exception {}
 }
