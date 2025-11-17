@@ -64,23 +64,51 @@ jobs:
           PMD_DIR=$(find . -maxdepth 1 -type d -name "pmd-bin-*" | head -1)
           if [ -z "$PMD_DIR" ] || [ ! -d "$PMD_DIR" ]; then
             echo "❌ Failed to find extracted PMD directory"
-            echo "Contents:"
+            echo "Contents after extraction:"
             ls -la
+            echo "Looking for any pmd directories:"
+            find . -maxdepth 2 -type d -name "*pmd*" 2>/dev/null || true
             exit 1
+          fi
+          
+          echo "Found PMD directory: $PMD_DIR"
+          echo "Directory structure:"
+          ls -la "$PMD_DIR" || true
+          
+          # Check if bin directory exists
+          if [ ! -d "$PMD_DIR/bin" ]; then
+            echo "⚠️ bin directory not found, checking structure..."
+            find "$PMD_DIR" -name "pmd" -type f 2>/dev/null | head -5 || true
+            find "$PMD_DIR" -type d -maxdepth 2 | head -10 || true
           fi
           
           echo "Installing PMD to /opt/pmd..."
           sudo mv "$PMD_DIR" /opt/pmd
-          sudo chmod +x /opt/pmd/bin/pmd
-          sudo ln -sf /opt/pmd/bin/pmd /usr/local/bin/pmd
+          
+          # Find the pmd executable
+          PMD_EXEC=$(find /opt/pmd -name "pmd" -type f | head -1)
+          if [ -z "$PMD_EXEC" ]; then
+            echo "❌ PMD executable not found"
+            echo "Contents of /opt/pmd:"
+            ls -la /opt/pmd || true
+            echo "Searching for executables:"
+            find /opt/pmd -type f -executable | head -10 || true
+            exit 1
+          fi
+          
+          echo "Found PMD executable at: $PMD_EXEC"
+          sudo chmod +x "$PMD_EXEC"
+          sudo ln -sf "$PMD_EXEC" /usr/local/bin/pmd
           
           # Verify installation
-          if /opt/pmd/bin/pmd --version; then
+          if pmd --version; then
             echo "✅ PMD ${PMD_VERSION} installed successfully"
-            /opt/pmd/bin/pmd --version
+            pmd --version
           else
             echo "⚠️ PMD installed but version check failed"
-            ls -la /opt/pmd/bin/
+            echo "Trying direct path:"
+            "$PMD_EXEC" --version || true
+            ls -la /opt/pmd/bin/ 2>/dev/null || find /opt/pmd -name "pmd" -ls || true
             exit 1
           fi
       
