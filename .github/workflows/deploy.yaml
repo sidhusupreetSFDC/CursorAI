@@ -8,6 +8,10 @@ jobs:
   code-quality:
     name: Code Quality Check
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      actions: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -15,58 +19,51 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '>=20.9.0'
       
-      - name: Install Salesforce Scanner
-        run: |
-          npm install -g @salesforce/sfdx-scanner
-          # Verify installation - try different command formats
-          npx @salesforce/sfdx-scanner --version || echo "Scanner installed"
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '>=11'
+          distribution: 'zulu'
       
-      - name: Install jq for JSON parsing
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli@latest
       
-      - name: Run Salesforce Scanner
+      - name: Install Salesforce Code Analyzer Plugin
+        run: sf plugins install code-analyzer@latest
+      
+      - name: Run Salesforce Code Analyzer
+        id: code-analyzer
+        uses: forcedotcom/run-code-analyzer@v2
+        with:
+          run-arguments: --workspace . --view detail --output-file sfca_results.json
+          results-artifact-name: salesforce-code-analyzer-results
+          github-token: ${{ github.token }}
+      
+      - name: Check for Critical Violations
         run: |
-          # Use npx to run scanner (most reliable method)
-          npx @salesforce/sfdx-scanner scanner:run \
-            --target force-app \
-            --format json \
-            --severity-threshold 3 \
-            --engine pmd \
-            --engine eslint \
-            --engine retire-js \
-            --json > scanner-report.json 2>&1 || SCANNER_EXIT_CODE=$?
+          echo "Code Analyzer Exit Code: ${{ steps.code-analyzer.outputs.exit-code }}"
+          echo "Total Violations: ${{ steps.code-analyzer.outputs.num-violations }}"
+          echo "Critical (Sev1) Violations: ${{ steps.code-analyzer.outputs.num-sev1-violations }}"
+          echo "High (Sev2) Violations: ${{ steps.code-analyzer.outputs.num-sev2-violations }}"
+          echo "Medium (Sev3) Violations: ${{ steps.code-analyzer.outputs.num-sev3-violations }}"
+          echo "Low (Sev4) Violations: ${{ steps.code-analyzer.outputs.num-sev4-violations }}"
+          echo "Info (Sev5) Violations: ${{ steps.code-analyzer.outputs.num-sev5-violations }}"
           
-          # Check for critical violations
-          if [ -f scanner-report.json ]; then
-            CRITICAL_COUNT=$(cat scanner-report.json | jq -r '[.result.violations[]? | select(.severity == 1)] | length // 0')
-            HIGH_COUNT=$(cat scanner-report.json | jq -r '[.result.violations[]? | select(.severity == 2)] | length // 0')
-            
-            echo "Critical violations: $CRITICAL_COUNT"
-            echo "High severity violations: $HIGH_COUNT"
-            
-            if [ "$CRITICAL_COUNT" -gt 0 ]; then
-              echo "❌ Found $CRITICAL_COUNT critical violation(s). Failing build."
-              cat scanner-report.json | jq '.result.violations[]? | select(.severity == 1)'
-              exit 1
-            fi
-            
-            echo "✅ No critical violations found"
-            cat scanner-report.json | jq '.result.summary'
-          else
-            echo "Scanner report not generated"
+          # Fail build on critical violations (severity 1)
+          if [ "${{ steps.code-analyzer.outputs.num-sev1-violations }}" -gt 0 ]; then
+            echo "❌ Found ${{ steps.code-analyzer.outputs.num-sev1-violations }} critical violation(s). Failing build."
             exit 1
           fi
-      
-      - name: Upload code quality reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-quality-reports
-          path: scanner-report.json
-          retention-days: 30
+          
+          # Fail build if analyzer exited with error
+          if [ "${{ steps.code-analyzer.outputs.exit-code }}" -ne 0 ]; then
+            echo "❌ Code Analyzer exited with error code ${{ steps.code-analyzer.outputs.exit-code }}"
+            exit 1
+          fi
+          
+          echo "✅ Code quality check passed - no critical violations found"
   
   deploy:
     needs: code-quality
