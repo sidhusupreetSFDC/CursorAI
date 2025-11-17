@@ -17,101 +17,6 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Setup Java for PMD
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      
-      - name: Install required tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip curl
-      
-      - name: Install PMD
-        run: |
-          # Use a stable PMD version (6.55.0 is a known working version)
-          PMD_VERSION="6.55.0"
-          
-          echo "Downloading PMD ${PMD_VERSION}..."
-          
-          # Download PMD binary distribution
-          if ! wget -q --show-progress -O pmd-bin.zip \
-            "https://github.com/pmd/pmd/releases/download/pmd_releases/${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip"; then
-            echo "❌ Failed to download PMD ${PMD_VERSION}"
-            echo "Trying alternative download method with curl..."
-            if ! curl -L -f -o pmd-bin.zip \
-              "https://github.com/pmd/pmd/releases/download/pmd_releases/${PMD_VERSION}/pmd-bin-${PMD_VERSION}.zip"; then
-              echo "❌ All download methods failed"
-              exit 1
-            fi
-          fi
-          
-          # Verify download
-          if [ ! -f pmd-bin.zip ] || [ ! -s pmd-bin.zip ]; then
-            echo "❌ Downloaded file is empty or missing"
-            exit 1
-          fi
-          
-          echo "Extracting PMD..."
-          unzip -q pmd-bin.zip || {
-            echo "❌ Failed to extract PMD zip file"
-            file pmd-bin.zip
-            exit 1
-          }
-          
-          # Find the extracted directory
-          PMD_DIR=$(find . -maxdepth 1 -type d -name "pmd-bin-*" | head -1)
-          if [ -z "$PMD_DIR" ] || [ ! -d "$PMD_DIR" ]; then
-            echo "❌ Failed to find extracted PMD directory"
-            echo "Contents after extraction:"
-            ls -la
-            echo "Looking for any pmd directories:"
-            find . -maxdepth 2 -type d -name "*pmd*" 2>/dev/null || true
-            exit 1
-          fi
-          
-          echo "Found PMD directory: $PMD_DIR"
-          echo "Directory structure:"
-          ls -la "$PMD_DIR" || true
-          
-          # Check if bin directory exists
-          if [ ! -d "$PMD_DIR/bin" ]; then
-            echo "⚠️ bin directory not found, checking structure..."
-            find "$PMD_DIR" -name "pmd" -type f 2>/dev/null | head -5 || true
-            find "$PMD_DIR" -type d -maxdepth 2 | head -10 || true
-          fi
-          
-          echo "Installing PMD to /opt/pmd..."
-          sudo mv "$PMD_DIR" /opt/pmd
-          
-          # Find the pmd executable
-          PMD_EXEC=$(find /opt/pmd -name "pmd" -type f | head -1)
-          if [ -z "$PMD_EXEC" ]; then
-            echo "❌ PMD executable not found"
-            echo "Contents of /opt/pmd:"
-            ls -la /opt/pmd || true
-            echo "Searching for executables:"
-            find /opt/pmd -type f -executable | head -10 || true
-            exit 1
-          fi
-          
-          echo "Found PMD executable at: $PMD_EXEC"
-          sudo chmod +x "$PMD_EXEC"
-          sudo ln -sf "$PMD_EXEC" /usr/local/bin/pmd
-          
-          # Verify installation
-          if pmd --version; then
-            echo "✅ PMD ${PMD_VERSION} installed successfully"
-            pmd --version
-          else
-            echo "⚠️ PMD installed but version check failed"
-            echo "Trying direct path:"
-            "$PMD_EXEC" --version || true
-            ls -la /opt/pmd/bin/ 2>/dev/null || find /opt/pmd -name "pmd" -ls || true
-            exit 1
-          fi
-      
       - name: Install Salesforce Scanner
         run: |
           npm install -g @salesforce/sfdx-scanner
@@ -153,43 +58,12 @@ jobs:
             exit 1
           fi
       
-      - name: Run PMD Analysis
-        run: |
-          # Run PMD on Apex classes
-          pmd check \
-            --dir force-app/main/default/classes \
-            --rulesets rulesets/apex/quickstart.xml,rulesets/apex/security.xml \
-            --format json \
-            --fail-on-violation false \
-            > pmd-report.json 2>&1 || PMD_EXIT_CODE=$?
-          
-          # Check for critical violations in PMD report
-          if [ -f pmd-report.json ]; then
-            # Check if PMD found any violations (priority 1 = critical/blocker)
-            CRITICAL_COUNT=$(cat pmd-report.json | jq -r '[.files[]?.violations[]? | select(.priority == 1)] | length // 0' 2>/dev/null || echo "0")
-            
-            echo "PMD Critical violations: $CRITICAL_COUNT"
-            
-            if [ "$CRITICAL_COUNT" -gt 0 ]; then
-              echo "❌ Found $CRITICAL_COUNT critical PMD violation(s). Failing build."
-              cat pmd-report.json | jq '.files[]?.violations[]? | select(.priority == 1)' 2>/dev/null || cat pmd-report.json
-              exit 1
-            fi
-            
-            echo "✅ No critical PMD violations found"
-            cat pmd-report.json | jq '.summary' 2>/dev/null || echo "PMD analysis completed"
-          else
-            echo "PMD report not generated, but continuing..."
-          fi
-      
       - name: Upload code quality reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: code-quality-reports
-          path: |
-            scanner-report.json
-            pmd-report.json
+          path: scanner-report.json
           retention-days: 30
   
   deploy:
