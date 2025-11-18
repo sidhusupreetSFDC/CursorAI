@@ -326,11 +326,17 @@ private class AccountServiceTest {
     static void testCreateFollowUpTasks_Success() {
         List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
         
+        // Delete tasks created by trigger to test service method in isolation
+        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
+        if (!triggerTasks.isEmpty()) {
+            delete triggerTasks;
+        }
+        
         Test.startTest();
         AccountService.createFollowUpTasks(accounts);
         Test.stopTest();
         
-        // Verify tasks were created
+        // Verify tasks were created by service method
         List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId IN :accounts];
         System.assertEquals(5, tasks.size(), 'Should create 5 tasks');
         
@@ -351,11 +357,17 @@ private class AccountServiceTest {
         }
         insert bulkAccounts;
         
+        // Delete tasks created by trigger to test service method in isolation
+        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :bulkAccounts];
+        if (!triggerTasks.isEmpty()) {
+            delete triggerTasks;
+        }
+        
         Test.startTest();
         AccountService.createFollowUpTasks(bulkAccounts);
         Test.stopTest();
         
-        // Verify bulk task creation
+        // Verify bulk task creation by service method
         List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :bulkAccounts];
         System.assertEquals(200, tasks.size(), 'Should create 200 tasks');
     }
