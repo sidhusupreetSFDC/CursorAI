@@ -1,235 +1,283 @@
 /**
- * Test class for AccountTriggerHandler and AccountTrigger
- * Tests trigger handler methods and trigger execution
- * Achieves 90%+ code coverage including trigger coverage
- * 
- * @author Salesforce Developer
- * @date 2024
+ * Test class for AccountTriggerHandler
+ * Tests trigger handler logic and indirectly tests AccountTrigger
+ * Provides comprehensive test coverage including positive, negative, bulk, and edge cases
+ * Target: 90%+ code coverage
  */
 @isTest
 private class AccountTriggerHandlerTest {
     
-    @testSetup
-    static void setupTestData() {
-        // Setup data if needed for trigger tests
-    }
-    
-    // Test handleBeforeInsert - Positive Cases
-    @isTest
-    static void testHandleBeforeInsert_WithNullRevenue() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 10; i++) {
-            Account acc = new Account();
-            acc.Name = 'Before Insert Account ' + i;
-            acc.AnnualRevenue = null;
-            accounts.add(acc);
-        }
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
-        
-        Test.startTest();
-        handler.handleBeforeInsert(accounts);
-        Test.stopTest();
-        
-        // Verify default revenue was set
-        for (Account acc : accounts) {
-            System.assertEquals(0, acc.AnnualRevenue, 'Should set default revenue to 0');
-        }
-    }
+    // ========== onBeforeInsert Tests ==========
     
     @isTest
-    static void testHandleBeforeInsert_WithExistingRevenue() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 10; i++) {
-            Account acc = new Account();
-            acc.Name = 'Before Insert With Revenue ' + i;
-            acc.AnnualRevenue = 150000;
-            accounts.add(acc);
-        }
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
-        
-        Test.startTest();
-        handler.handleBeforeInsert(accounts);
-        Test.stopTest();
-        
-        // Verify existing revenue was not changed
-        for (Account acc : accounts) {
-            System.assertEquals(150000, acc.AnnualRevenue, 'Should not change existing revenue');
-        }
-    }
-    
-    // Test handleBeforeInsert - Bulk
-    @isTest
-    static void testHandleBeforeInsert_Bulk() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk Before Insert ' + i;
-            acc.AnnualRevenue = null;
-            accounts.add(acc);
-        }
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
-        
-        Test.startTest();
-        handler.handleBeforeInsert(accounts);
-        Test.stopTest();
-        
-        // Verify all accounts have default revenue
-        for (Account acc : accounts) {
-            System.assertEquals(0, acc.AnnualRevenue, 'Should set default revenue for all accounts');
-        }
-    }
-    
-    // Test handleAfterInsert - Positive Cases
-    @isTest
-    static void testHandleAfterInsert_CreatesTasks() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 10; i++) {
-            Account acc = new Account();
-            acc.Name = 'After Insert Account ' + i;
-            accounts.add(acc);
-        }
-        
-        insert accounts;
-        
-        // Delete tasks created by trigger to test handler in isolation
-        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
-        delete triggerTasks;
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
-        
-        Test.startTest();
-        handler.handleAfterInsert(accounts);
-        Test.stopTest();
-        
-        // Verify tasks were created by handler
-        List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId IN :accounts];
-        System.assertEquals(10, tasks.size(), 'Should create 10 tasks');
-        
-        for (Task t : tasks) {
-            System.assertEquals('Follow up on new account', t.Subject, 'Task subject should match');
-        }
-    }
-    
-    @isTest
-    static void testHandleAfterInsert_Bulk() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk After Insert ' + i;
-            accounts.add(acc);
-        }
-        
-        insert accounts;
-        
-        // Delete tasks created by trigger to test handler in isolation
-        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
-        delete triggerTasks;
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
-        
-        Test.startTest();
-        handler.handleAfterInsert(accounts);
-        Test.stopTest();
-        
-        // Verify bulk task creation by handler
-        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
-        System.assertEquals(200, tasks.size(), 'Should create 200 tasks');
-    }
-    
-    // Test Trigger Execution - Before Insert
-    @isTest
-    static void testTrigger_BeforeInsert() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 10; i++) {
-            Account acc = new Account();
-            acc.Name = 'Trigger Test Account ' + i;
-            acc.AnnualRevenue = null;
-            accounts.add(acc);
-        }
-        
-        Test.startTest();
-        insert accounts;
-        Test.stopTest();
-        
-        // Verify trigger set default revenue
-        List<Account> insertedAccounts = [SELECT Id, AnnualRevenue FROM Account WHERE Id IN :accounts];
-        for (Account acc : insertedAccounts) {
-            System.assertEquals(0, acc.AnnualRevenue, 'Trigger should set default revenue');
-        }
-    }
-    
-    // Test Trigger Execution - After Insert
-    @isTest
-    static void testTrigger_AfterInsert() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 10; i++) {
-            Account acc = new Account();
-            acc.Name = 'Trigger After Insert Test ' + i;
-            accounts.add(acc);
-        }
-        
-        Test.startTest();
-        insert accounts;
-        Test.stopTest();
-        
-        // Verify trigger created tasks
-        List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId IN :accounts];
-        System.assertEquals(10, tasks.size(), 'Trigger should create 10 tasks');
-        
-        for (Task t : tasks) {
-            System.assertEquals('Follow up on new account', t.Subject, 'Task subject should match');
-        }
-    }
-    
-    // Test Trigger Execution - Bulk
-    @isTest
-    static void testTrigger_BulkInsert() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk Trigger Test ' + i;
-            acc.AnnualRevenue = null;
-            accounts.add(acc);
-        }
-        
-        Test.startTest();
-        insert accounts;
-        Test.stopTest();
-        
-        // Verify trigger handled bulk insert
-        List<Account> insertedAccounts = [SELECT Id, AnnualRevenue FROM Account WHERE Id IN :accounts];
-        System.assertEquals(200, insertedAccounts.size(), 'Should insert 200 accounts');
-        
-        for (Account acc : insertedAccounts) {
-            System.assertEquals(0, acc.AnnualRevenue, 'Trigger should set default revenue for all');
-        }
-        
-        // Verify tasks were created
-        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
-        System.assertEquals(200, tasks.size(), 'Trigger should create 200 tasks');
-    }
-    
-    // Test Error Handling
-    @isTest
-    static void testHandleBeforeInsert_ErrorHandling() {
-        // This test verifies error handling in the handler
-        // The handler should catch exceptions and wrap them in AccountServiceException
-        List<Account> accounts = new List<Account>();
+    static void testOnBeforeInsert_Positive_SetsDefaultRevenue() {
+        // Arrange
         Account acc = new Account();
-        acc.Name = 'Error Test Account';
-        accounts.add(acc);
-        
-        AccountTriggerHandler handler = new AccountTriggerHandler();
+        acc.Name = 'Test Account';
+        acc.AnnualRevenue = null; // Explicitly set to null
         
         Test.startTest();
-        // Should not throw exception, handler catches and logs
-        handler.handleBeforeInsert(accounts);
+        // Act - Insert account (triggers AccountTrigger -> AccountTriggerHandler)
+        insert acc;
         Test.stopTest();
         
-        System.assert(true, 'Handler should handle errors gracefully');
+        // Assert
+        Account insertedAccount = [SELECT AnnualRevenue FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(0, insertedAccount.AnnualRevenue, 'AnnualRevenue should be set to 0 when null');
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_Positive_PreservesExistingRevenue() {
+        // Arrange
+        Account acc = new Account();
+        acc.Name = 'Test Account';
+        acc.AnnualRevenue = 5000; // Set a value
+        
+        Test.startTest();
+        // Act
+        insert acc;
+        Test.stopTest();
+        
+        // Assert
+        Account insertedAccount = [SELECT AnnualRevenue FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(5000, insertedAccount.AnnualRevenue, 'AnnualRevenue should remain unchanged');
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_Positive_BulkRecords() {
+        // Arrange - Create 200+ accounts with null revenue
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 250; i++) {
+            Account acc = new Account();
+            acc.Name = 'Bulk Account ' + i;
+            acc.AnnualRevenue = null;
+            accounts.add(acc);
+        }
+        
+        Test.startTest();
+        // Act
+        insert accounts;
+        Test.stopTest();
+        
+        // Assert
+        List<Account> insertedAccounts = [SELECT AnnualRevenue FROM Account WHERE Name LIKE 'Bulk Account%'];
+        System.assertEquals(250, insertedAccounts.size(), '250 accounts should be created');
+        
+        for (Account acc : insertedAccounts) {
+            System.assertEquals(0, acc.AnnualRevenue, 'All null revenues should be set to 0');
+        }
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_EdgeCase_MixedNullAndValues() {
+        // Arrange - Mix of null and non-null revenues
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 10; i++) {
+            Account acc = new Account();
+            acc.Name = 'Mixed Account ' + i;
+            acc.AnnualRevenue = (i % 2 == 0) ? null : (i * 1000); // Alternating null and values
+            accounts.add(acc);
+        }
+        
+        Test.startTest();
+        // Act
+        insert accounts;
+        Test.stopTest();
+        
+        // Assert
+        List<Account> insertedAccounts = [SELECT AnnualRevenue FROM Account WHERE Name LIKE 'Mixed Account%' ORDER BY Name];
+        System.assertEquals(10, insertedAccounts.size(), '10 accounts should be created');
+        
+        for (Integer i = 0; i < insertedAccounts.size(); i++) {
+            if (i % 2 == 0) {
+                System.assertEquals(0, insertedAccounts[i].AnnualRevenue, 'Null revenues should be set to 0');
+            } else {
+                System.assertEquals(i * 1000, insertedAccounts[i].AnnualRevenue, 'Non-null revenues should be preserved');
+            }
+        }
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_EdgeCase_ZeroRevenue() {
+        // Arrange
+        Account acc = new Account();
+        acc.Name = 'Zero Revenue Account';
+        acc.AnnualRevenue = 0; // Explicitly set to 0
+        
+        Test.startTest();
+        // Act
+        insert acc;
+        Test.stopTest();
+        
+        // Assert
+        Account insertedAccount = [SELECT AnnualRevenue FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(0, insertedAccount.AnnualRevenue, 'Zero revenue should remain 0');
+    }
+    
+    // ========== onAfterInsert Tests ==========
+    
+    @isTest
+    static void testOnAfterInsert_Positive_CreatesFollowUpTask() {
+        // Arrange
+        Account acc = new Account();
+        acc.Name = 'Test Account';
+        acc.AnnualRevenue = 5000;
+        
+        Test.startTest();
+        // Act - Insert account (triggers AccountTrigger -> AccountTriggerHandler)
+        insert acc;
+        Test.stopTest();
+        
+        // Assert - Verify task was created
+        List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId = :acc.Id];
+        System.assertEquals(1, tasks.size(), 'One follow-up task should be created');
+        System.assertEquals('Follow up on new account', tasks[0].Subject, 'Task subject should match');
+        System.assertEquals(acc.Id, tasks[0].WhatId, 'Task should be related to account');
+    }
+    
+    @isTest
+    static void testOnAfterInsert_Positive_BulkRecords() {
+        // Arrange - Create 200+ accounts
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 250; i++) {
+            Account acc = new Account();
+            acc.Name = 'Bulk Task Account ' + i;
+            acc.AnnualRevenue = 1000;
+            accounts.add(acc);
+        }
+        
+        Test.startTest();
+        // Act
+        insert accounts;
+        Test.stopTest();
+        
+        // Assert - Verify tasks were created
+        Set<Id> accountIds = new Set<Id>();
+        for (Account acc : accounts) {
+            accountIds.add(acc.Id);
+        }
+        
+        List<Task> tasks = [SELECT Id, WhatId FROM Task WHERE WhatId IN :accountIds];
+        System.assertEquals(250, tasks.size(), '250 tasks should be created');
+        
+        // Verify each account has a task
+        Set<Id> accountIdsWithTasks = new Set<Id>();
+        for (Task t : tasks) {
+            accountIdsWithTasks.add(t.WhatId);
+        }
+        System.assertEquals(250, accountIdsWithTasks.size(), 'All accounts should have tasks');
+    }
+    
+    @isTest
+    static void testOnAfterInsert_EdgeCase_NullList() {
+        // Arrange - Test handler method directly with null
+        AccountTriggerHandler handler = new AccountTriggerHandler();
+        List<Account> accounts = null;
+        
+        Test.startTest();
+        // Act - Should handle null gracefully
+        handler.onAfterInsert(accounts);
+        Test.stopTest();
+        
+        // Assert - No exception should be thrown
+        System.assert(true, 'Should handle null list gracefully');
+    }
+    
+    @isTest
+    static void testOnAfterInsert_EdgeCase_EmptyList() {
+        // Arrange - Test handler method directly with empty list
+        AccountTriggerHandler handler = new AccountTriggerHandler();
+        List<Account> accounts = new List<Account>();
+        
+        Test.startTest();
+        // Act - Should handle empty list gracefully
+        handler.onAfterInsert(accounts);
+        Test.stopTest();
+        
+        // Assert - No exception should be thrown
+        System.assert(true, 'Should handle empty list gracefully');
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_EdgeCase_NullList() {
+        // Arrange - Test handler method directly with null
+        AccountTriggerHandler handler = new AccountTriggerHandler();
+        List<Account> accounts = null;
+        
+        Test.startTest();
+        // Act - Should handle null gracefully
+        handler.onBeforeInsert(accounts);
+        Test.stopTest();
+        
+        // Assert - No exception should be thrown
+        System.assert(true, 'Should handle null list gracefully');
+    }
+    
+    @isTest
+    static void testOnBeforeInsert_EdgeCase_EmptyList() {
+        // Arrange - Test handler method directly with empty list
+        AccountTriggerHandler handler = new AccountTriggerHandler();
+        List<Account> accounts = new List<Account>();
+        
+        Test.startTest();
+        // Act - Should handle empty list gracefully
+        handler.onBeforeInsert(accounts);
+        Test.stopTest();
+        
+        // Assert - No exception should be thrown
+        System.assert(true, 'Should handle empty list gracefully');
+    }
+    
+    // ========== Integration Tests ==========
+    
+    @isTest
+    static void testTriggerIntegration_BeforeAndAfterInsert() {
+        // Arrange - Test that both before and after insert logic execute
+        Account acc = new Account();
+        acc.Name = 'Integration Test Account';
+        acc.AnnualRevenue = null; // Will be set to 0 in before insert
+        
+        Test.startTest();
+        // Act
+        insert acc;
+        Test.stopTest();
+        
+        // Assert - Verify before insert logic (revenue set to 0)
+        Account insertedAccount = [SELECT AnnualRevenue FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(0, insertedAccount.AnnualRevenue, 'Revenue should be set to 0');
+        
+        // Assert - Verify after insert logic (task created)
+        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId = :acc.Id];
+        System.assertEquals(1, tasks.size(), 'Follow-up task should be created');
+    }
+    
+    @isTest
+    static void testTriggerIntegration_BulkWithBothContexts() {
+        // Arrange - Mix of null and non-null revenues
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 100; i++) {
+            Account acc = new Account();
+            acc.Name = 'Integration Bulk Account ' + i;
+            acc.AnnualRevenue = (i % 3 == 0) ? null : (i * 100); // Every 3rd is null
+            accounts.add(acc);
+        }
+        
+        Test.startTest();
+        // Act
+        insert accounts;
+        Test.stopTest();
+        
+        // Assert - Verify before insert logic
+        List<Account> insertedAccounts = [SELECT AnnualRevenue FROM Account WHERE Name LIKE 'Integration Bulk Account%'];
+        System.assertEquals(100, insertedAccounts.size(), '100 accounts should be created');
+        
+        // Assert - Verify after insert logic (tasks created)
+        Set<Id> accountIds = new Set<Id>();
+        for (Account acc : insertedAccounts) {
+            accountIds.add(acc.Id);
+        }
+        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :accountIds];
+        System.assertEquals(100, tasks.size(), '100 tasks should be created');
     }
 }
 

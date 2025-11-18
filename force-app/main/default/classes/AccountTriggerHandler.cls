@@ -1,38 +1,38 @@
 /**
  * Trigger Handler for Account object
- * Follows Trigger Handler pattern: Triggers → Handlers → Services
+ * Follows the Trigger Handler pattern: Triggers → Handlers → Services
  * Orchestrates trigger logic and delegates to service layer
- * 
- * @author Salesforce Developer
- * @date 2024
  */
 public class AccountTriggerHandler {
     
     /**
      * Handles before insert trigger context
+     * Sets default AnnualRevenue to 0 if null
      * @param newAccounts List of new Account records
      */
-    public void handleBeforeInsert(List<Account> newAccounts) {
-        try {
-            AccountService.setDefaultRevenue(newAccounts);
-        } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'AccountTriggerHandler.handleBeforeInsert error: ' + e.getMessage());
-            throw new AccountServiceException('Error in before insert handler: ' + e.getMessage());
+    public void onBeforeInsert(List<Account> newAccounts) {
+        if (newAccounts == null || newAccounts.isEmpty()) {
+            return;
+        }
+        
+        for (Account acc : newAccounts) {
+            if (acc.AnnualRevenue == null) {
+                acc.AnnualRevenue = 0;
+            }
         }
     }
     
     /**
      * Handles after insert trigger context
-     * @param newAccounts List of new Account records
+     * Creates follow-up tasks for new accounts
+     * @param newAccounts List of newly inserted Account records
      */
-    public void handleAfterInsert(List<Account> newAccounts) {
-        try {
-            AccountService.createFollowUpTasks(newAccounts);
-        } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'AccountTriggerHandler.handleAfterInsert error: ' + e.getMessage());
-            // Log error but don't fail the transaction for after insert
-            // Tasks are non-critical follow-up items
+    public void onAfterInsert(List<Account> newAccounts) {
+        if (newAccounts == null || newAccounts.isEmpty()) {
+            return;
         }
+        
+        AccountService.createFollowUpTasks(newAccounts);
     }
 }
 

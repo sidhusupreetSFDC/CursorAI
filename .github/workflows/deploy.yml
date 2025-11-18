@@ -1,4 +1,4 @@
-name: Salesforce CI/CD Pipeline
+name: Deploy
 
 on:
   push:
@@ -21,43 +21,42 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: 🔧 Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
           sf --version
 
-      - name: 🔌 Install Salesforce Code Analyzer Plugin
+      - name: 🔌 Install Code Analyzer Plugin
         run: |
           sf plugins install @salesforce/sfdx-scanner@latest
 
       - name: 📦 Install jq
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: 🔍 Run Code Analyzer
-        id: code-quality
+        id: code-analyzer
         continue-on-error: true
         run: |
-          # Run scanner and capture output
-          sf scanner:run \
+          sf scanner run \
             --target "${{ env.SOURCE_DIR }}" \
             --format json \
-            --outfile code-quality-report.json || true
-          
-          # Check for Sev1 issues
+            --outfile code-quality-report.json \
+            --severity-threshold 1 || true
+
+      - name: 📊 Check for Sev1 Issues
+        run: |
           if [ -f code-quality-report.json ]; then
+            # Check if there are any Sev1 issues
             # Handle different JSON structures from scanner
-            SEV1_COUNT=$(jq '[.[] | .violations[]? | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
-                        jq '[.[] | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
+            sev1_count=$(jq '[.result[]? | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
+                        jq '[.[]? | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
                         echo "0")
-            
-            if [ "$SEV1_COUNT" != "0" ] && [ -n "$SEV1_COUNT" ]; then
-              echo "❌ Found $SEV1_COUNT Sev1 issues. Failing build."
-              jq '.[] | .violations[]? | select(.severity == 1)' code-quality-report.json 2>/dev/null || \
-              jq '.[] | select(.severity == 1)' code-quality-report.json 2>/dev/null || true
+            if [ "$sev1_count" != "0" ] && [ -n "$sev1_count" ]; then
+              echo "❌ Found $sev1_count Sev1 issues. Failing build."
+              jq '.' code-quality-report.json
               exit 1
             else
               echo "✅ No Sev1 issues found."
@@ -66,7 +65,7 @@ jobs:
             echo "⚠️ Code quality report not generated. Continuing..."
           fi
 
-      - name: 📊 Upload Code Quality Report
+      - name: 📤 Upload Code Quality Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -85,117 +84,76 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: 🔧 Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
           sf --version
 
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: 📦 Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔐 Authenticate Salesforce Org
         env:
           SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
         run: |
           if [ -z "$SFDX_AUTH_URL" ]; then
-            echo "⚠️ SFDX_AUTH_URL secret not set. Skipping validation."
-            exit 0
+            echo "⚠️ SFDX_AUTH_URL secret not set. Skipping authentication."
+            exit 1
           fi
-          
-          echo "$SFDX_AUTH_URL" > auth.txt
+          echo "$SFDX_AUTH_URL" > /tmp/sfdx-url.txt
           sf org login sfdx-url \
-            --sfdx-url-file auth.txt \
+            --sfdx-url-file /tmp/sfdx-url.txt \
             --alias ci-org \
             --set-default
-
-      - name: 📦 Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          rm -f /tmp/sfdx-url.txt
 
       - name: ✅ Validate Deployment
         id: validate
         continue-on-error: true
         run: |
-          set +e
           sf project deploy validate \
             --source-dir "${{ env.SOURCE_DIR }}" \
             --test-level RunLocalTests \
             --wait 10 \
-            --json > validate-report.json
-          VALIDATE_EXIT_CODE=$?
-          set -e
-          
-          # Store exit code for next step
-          echo "VALIDATE_EXIT_CODE=$VALIDATE_EXIT_CODE" >> $GITHUB_ENV
-          
-          # Log the exit code for debugging
-          echo "Validation command exit code: $VALIDATE_EXIT_CODE"
-          
-          # If exit code is 0, validation succeeded regardless of JSON structure
-          if [ "$VALIDATE_EXIT_CODE" -eq 0 ]; then
-            echo "✅ Validation command completed successfully"
+            --json > validate-result.json || true
+
+      - name: 📊 Check Validation Results
+        run: |
+          if [ -f validate-result.json ]; then
+            status=$(jq -r '.status' validate-result.json 2>/dev/null || echo "unknown")
+            if [ "$status" != "0" ]; then
+              echo "❌ Validation failed. Check validate-result.json for details."
+              jq '.' validate-result.json
+              exit 1
+            else
+              echo "✅ Validation succeeded."
+            fi
+          else
+            echo "❌ Validation result file not found."
+            exit 1
           fi
 
-      - name: 📊 Upload Validation Report
+      - name: 📤 Upload Validation Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: validate-report
-          path: validate-report.json
+          path: validate-result.json
           retention-days: 30
 
       - name: 🧹 Cleanup Auth Files
         if: always()
         run: |
-          rm -f auth.txt
-
-      - name: ❌ Fail if Validation Failed
-        run: |
-          # Check if validation command failed (non-zero exit code)
-          if [ "${VALIDATE_EXIT_CODE:-1}" -ne 0 ]; then
-            echo "❌ Validation command failed with exit code: ${VALIDATE_EXIT_CODE:-1}"
-            if [ -f validate-report.json ]; then
-              echo "Validation report contents:"
-              cat validate-report.json | jq '.' 2>/dev/null || cat validate-report.json
-            fi
-            exit 1
-          fi
-          
-          # Parse JSON if file exists
-          if [ -f validate-report.json ]; then
-            # Check for different JSON structures
-            STATUS=$(jq -r '.status // .result.status // .result.done // empty' validate-report.json 2>/dev/null || echo "")
-            
-            # Also check if there are any errors in the response
-            HAS_ERRORS=$(jq -r '.result.numberComponentErrors // .numberComponentErrors // 0' validate-report.json 2>/dev/null || echo "0")
-            
-            echo "Validation status from JSON: $STATUS"
-            echo "Component errors: $HAS_ERRORS"
-            
-            # If status exists and indicates failure, fail the build
-            # Note: "0" might be a valid status code, so we check for actual failure statuses
-            if [ -n "$STATUS" ] && [ "$STATUS" != "Succeeded" ] && [ "$STATUS" != "true" ] && [ "$STATUS" != "1" ] && [ "$STATUS" != "0" ]; then
-              echo "❌ Validation failed with status: $STATUS"
-              # Show error details if available
-              jq -r '.result.details // .details // empty' validate-report.json 2>/dev/null || true
-              exit 1
-            fi
-            
-            # Fail if there are component errors
-            if [ "$HAS_ERRORS" != "0" ] && [ "$HAS_ERRORS" != "null" ] && [ -n "$HAS_ERRORS" ]; then
-              echo "❌ Validation found $HAS_ERRORS component errors"
-              exit 1
-            fi
-            
-            echo "✅ Validation completed successfully"
-          else
-            echo "⚠️ Validation report file not found, but command succeeded (exit code: ${VALIDATE_EXIT_CODE:-0})"
-          fi
+          rm -f /tmp/sfdx-url.txt
+          sf org logout --target-org ci-org --no-prompt || true
 
   deploy:
     name: 🚀 Deploy to Org
     runs-on: ubuntu-latest
-    needs: [code-quality, validate]
+    needs: validate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: 📥 Checkout code
@@ -204,14 +162,18 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: 🔧 Install Salesforce CLI
         run: |
           npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
           sf --version
 
-      - name: 🔐 Authenticate to Salesforce Org
+      - name: 📦 Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔐 Authenticate Salesforce Org
         env:
           SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
         run: |
@@ -219,19 +181,14 @@ jobs:
             echo "❌ SFDX_AUTH_URL secret not set. Cannot deploy."
             exit 1
           fi
-          
-          echo "$SFDX_AUTH_URL" > auth.txt
+          echo "$SFDX_AUTH_URL" > /tmp/sfdx-url.txt
           sf org login sfdx-url \
-            --sfdx-url-file auth.txt \
+            --sfdx-url-file /tmp/sfdx-url.txt \
             --alias deploy-org \
             --set-default
+          rm -f /tmp/sfdx-url.txt
 
-      - name: 📦 Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-
-      - name: 🚀 Deploy to Salesforce Org
+      - name: 🚀 Deploy to Org
         id: deploy
         continue-on-error: true
         run: |
@@ -239,57 +196,35 @@ jobs:
             --source-dir "${{ env.SOURCE_DIR }}" \
             --test-level RunLocalTests \
             --wait 10 \
-            --json > deploy-report.json || true
+            --json > deploy-result.json || true
 
-      - name: 📊 Upload Deployment Report
+      - name: 📊 Check Deployment Results
+        run: |
+          if [ -f deploy-result.json ]; then
+            status=$(jq -r '.status' deploy-result.json 2>/dev/null || echo "unknown")
+            if [ "$status" != "0" ]; then
+              echo "❌ Deployment failed. Check deploy-result.json for details."
+              jq '.' deploy-result.json
+              exit 1
+            else
+              echo "✅ Deployment succeeded."
+              jq -r '.result.deployedSource[].name' deploy-result.json | head -10
+            fi
+          else
+            echo "❌ Deployment result file not found."
+            exit 1
+          fi
+
+      - name: 📤 Upload Deployment Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deploy-report
-          path: deploy-report.json
+          path: deploy-result.json
           retention-days: 30
 
       - name: 🧹 Cleanup Auth Files
         if: always()
         run: |
-          rm -f auth.txt
-
-      - name: ❌ Fail if Deployment Failed
-        run: |
-          if [ -f deploy-report.json ]; then
-            # Check for different JSON structures
-            STATUS=$(jq -r '.status // .result.status // .result.done // "unknown"' deploy-report.json 2>/dev/null || echo "unknown")
-            
-            # Also check if there are any errors in the response
-            HAS_ERRORS=$(jq -r '.result.numberComponentErrors // .numberComponentErrors // 0' deploy-report.json 2>/dev/null || echo "0")
-            
-            echo "Deployment status: $STATUS"
-            echo "Component errors: $HAS_ERRORS"
-            
-            # Check if status indicates success
-            if [ "$STATUS" = "Succeeded" ] || [ "$STATUS" = "true" ] || [ "$STATUS" = "1" ]; then
-              echo "✅ Deployment succeeded!"
-            elif [ "$STATUS" = "unknown" ]; then
-              echo "⚠️ Could not determine deployment status from JSON"
-              # Try to check exit code or look for error messages
-              ERROR_MSG=$(jq -r '.message // .result.message // empty' deploy-report.json 2>/dev/null || echo "")
-              if [ -n "$ERROR_MSG" ]; then
-                echo "❌ Deployment error: $ERROR_MSG"
-                exit 1
-              fi
-            else
-              echo "❌ Deployment failed with status: $STATUS"
-              # Show error details if available
-              jq -r '.result.details // .details // empty' deploy-report.json 2>/dev/null || true
-              exit 1
-            fi
-            
-            # Fail if there are component errors
-            if [ "$HAS_ERRORS" != "0" ] && [ "$HAS_ERRORS" != "null" ] && [ -n "$HAS_ERRORS" ]; then
-              echo "❌ Deployment found $HAS_ERRORS component errors"
-              exit 1
-            fi
-          else
-            echo "❌ Deployment report file not found"
-            exit 1
-          fi
+          rm -f /tmp/sfdx-url.txt
+          sf org logout --target-org deploy-org --no-prompt || true

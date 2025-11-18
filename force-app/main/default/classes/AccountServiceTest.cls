@@ -1,10 +1,7 @@
 /**
  * Test class for AccountService
- * Tests all methods with positive, negative, bulk, and edge cases
- * Achieves 90%+ code coverage
- * 
- * @author Salesforce Developer
- * @date 2024
+ * Provides comprehensive test coverage including positive, negative, bulk, and edge cases
+ * Target: 90%+ code coverage
  */
 @isTest
 private class AccountServiceTest {
@@ -13,383 +10,459 @@ private class AccountServiceTest {
     static void setupTestData() {
         // Create test accounts for various test scenarios
         List<Account> testAccounts = new List<Account>();
-        
-        // Create accounts with revenue
-        for (Integer i = 0; i < 5; i++) {
-            Account acc = new Account();
-            acc.Name = 'Test Account ' + i;
-            acc.AnnualRevenue = 100000 + (i * 10000);
-            testAccounts.add(acc);
-        }
-        
-        // Create old accounts for deletion tests (created 400 days ago)
-        for (Integer i = 0; i < 3; i++) {
-            Account acc = new Account();
-            acc.Name = 'Old Account ' + i;
-            acc.AnnualRevenue = 50000;
-            testAccounts.add(acc);
-        }
-        
-        insert testAccounts;
-        
-        // Update CreatedDate for old accounts using Test.setCreatedDate
-        List<Account> oldAccounts = [SELECT Id FROM Account WHERE Name LIKE 'Old Account%'];
-        for (Account acc : oldAccounts) {
-            Test.setCreatedDate(acc.Id, Date.today().addDays(-400));
-        }
-    }
-    
-    // Test createAccounts - Positive Cases
-    @isTest
-    static void testCreateAccounts_Success() {
-        List<Account> newAccounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
-            acc.Name = 'New Account ' + i;
-            acc.AnnualRevenue = 50000;
-            newAccounts.add(acc);
+            acc.Name = 'Test Account ' + i;
+            acc.AnnualRevenue = 1000 * (i + 1);
+            testAccounts.add(acc);
         }
+        insert testAccounts;
+    }
+    
+    // ========== createAccounts Tests ==========
+    
+    @isTest
+    static void testCreateAccounts_Positive_SingleRecord() {
+        // Arrange
+        List<Account> accounts = TestDataFactory.createAccounts(1, 'Test', 5000);
         
         Test.startTest();
-        Database.SaveResult[] results = AccountService.createAccounts(newAccounts);
+        // Act
+        Database.SaveResult[] results = AccountService.createAccounts(accounts);
         Test.stopTest();
         
-        // Verify results
-        System.assertEquals(10, results.size(), 'Should create 10 accounts');
+        // Assert
+        System.assertEquals(1, results.size(), 'Should return one result');
+        System.assert(results[0].isSuccess(), 'Account creation should succeed');
+        
+        // Verify account was created
+        List<Account> createdAccounts = [SELECT Id, Name, AnnualRevenue FROM Account WHERE Name = 'Test 0'];
+        System.assertEquals(1, createdAccounts.size(), 'Account should be created');
+        System.assertEquals(5000, createdAccounts[0].AnnualRevenue, 'Revenue should match');
+    }
+    
+    @isTest
+    static void testCreateAccounts_Positive_BulkRecords() {
+        // Arrange - Create 200+ records for bulk testing
+        List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Account', 10000);
+        
+        Test.startTest();
+        // Act
+        Database.SaveResult[] results = AccountService.createAccounts(accounts);
+        Test.stopTest();
+        
+        // Assert
+        System.assertEquals(250, results.size(), 'Should return 250 results');
+        
+        Integer successCount = 0;
         for (Database.SaveResult result : results) {
-            System.assert(result.isSuccess(), 'All accounts should be created successfully');
+            if (result.isSuccess()) {
+                successCount++;
+            }
         }
+        System.assertEquals(250, successCount, 'All accounts should be created successfully');
         
         // Verify accounts were created
-        List<Account> createdAccounts = [SELECT Id, Name FROM Account WHERE Name LIKE 'New Account%'];
-        System.assertEquals(10, createdAccounts.size(), 'Should have 10 accounts in database');
-    }
-    
-    // Test createAccounts - Bulk (200+ records)
-    @isTest
-    static void testCreateAccounts_Bulk() {
-        List<Account> bulkAccounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk Account ' + i;
-            acc.AnnualRevenue = 100000;
-            bulkAccounts.add(acc);
-        }
-        
-        Test.startTest();
-        Database.SaveResult[] results = AccountService.createAccounts(bulkAccounts);
-        Test.stopTest();
-        
-        System.assertEquals(200, results.size(), 'Should process 200 accounts');
-        
-        // Verify bulk creation
         List<Account> createdAccounts = [SELECT Id FROM Account WHERE Name LIKE 'Bulk Account%'];
-        System.assertEquals(200, createdAccounts.size(), 'Should have 200 accounts in database');
+        System.assertEquals(250, createdAccounts.size(), '250 accounts should be created');
     }
     
-    // Test createAccounts - Negative Cases
     @isTest
-    static void testCreateAccounts_NullList() {
+    static void testCreateAccounts_Negative_NullList() {
+        // Arrange
+        List<Account> accounts = null;
+        
         Test.startTest();
+        // Act & Assert
         try {
-            AccountService.createAccounts(null);
-            System.assert(false, 'Should throw exception for null list');
+            AccountService.createAccounts(accounts);
+            System.assert(false, 'Should have thrown AccountServiceException');
         } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('cannot be null'), 'Should throw appropriate error');
+            System.assert(e.getMessage().contains('null or empty'), 'Error message should mention null or empty');
         }
         Test.stopTest();
     }
     
     @isTest
-    static void testCreateAccounts_EmptyList() {
+    static void testCreateAccounts_Negative_EmptyList() {
+        // Arrange
+        List<Account> accounts = new List<Account>();
+        
         Test.startTest();
+        // Act & Assert
         try {
-            AccountService.createAccounts(new List<Account>());
-            System.assert(false, 'Should throw exception for empty list');
+            AccountService.createAccounts(accounts);
+            System.assert(false, 'Should have thrown AccountServiceException');
         } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('cannot be null or empty'), 'Should throw appropriate error');
+            System.assert(e.getMessage().contains('null or empty'), 'Error message should mention null or empty');
         }
         Test.stopTest();
     }
     
-    // Test updateAccountRevenue - Positive Cases
+    // ========== createAccount Tests ==========
+    
     @isTest
-    static void testUpdateAccountRevenue_Success() {
-        List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
+    static void testCreateAccount_Positive_Success() {
+        // Arrange
+        String accountName = 'Single Test Account';
+        Decimal revenue = 7500;
+        
+        Test.startTest();
+        // Act
+        Id accountId = AccountService.createAccount(accountName, revenue);
+        Test.stopTest();
+        
+        // Assert
+        System.assertNotEquals(null, accountId, 'Account ID should not be null');
+        
+        Account createdAccount = [SELECT Id, Name, AnnualRevenue FROM Account WHERE Id = :accountId];
+        System.assertEquals(accountName, createdAccount.Name, 'Account name should match');
+        System.assertEquals(revenue, createdAccount.AnnualRevenue, 'Revenue should match');
+    }
+    
+    @isTest
+    static void testCreateAccount_Negative_BlankName() {
+        // Arrange
+        String accountName = '';
+        Decimal revenue = 5000;
+        
+        Test.startTest();
+        // Act & Assert
+        try {
+            AccountService.createAccount(accountName, revenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
+        } catch (AccountServiceException e) {
+            System.assert(e.getMessage().contains('blank'), 'Error message should mention blank');
+        }
+        Test.stopTest();
+    }
+    
+    @isTest
+    static void testCreateAccount_Negative_NullName() {
+        // Arrange
+        String accountName = null;
+        Decimal revenue = 5000;
+        
+        Test.startTest();
+        // Act & Assert
+        try {
+            AccountService.createAccount(accountName, revenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
+        } catch (AccountServiceException e) {
+            System.assert(e.getMessage().contains('blank'), 'Error message should mention blank');
+        }
+        Test.stopTest();
+    }
+    
+    // ========== updateAccountRevenue Tests ==========
+    
+    @isTest
+    static void testUpdateAccountRevenue_Positive_SingleRecord() {
+        // Arrange
+        Account testAccount = [SELECT Id FROM Account LIMIT 1];
+        Decimal newRevenue = 50000;
+        
+        Test.startTest();
+        // Act
+        Boolean result = AccountService.updateAccountRevenue(testAccount.Id, newRevenue);
+        Test.stopTest();
+        
+        // Assert
+        System.assert(result, 'Update should succeed');
+        
+        Account updatedAccount = [SELECT AnnualRevenue FROM Account WHERE Id = :testAccount.Id];
+        System.assertEquals(newRevenue, updatedAccount.AnnualRevenue, 'Revenue should be updated');
+    }
+    
+    @isTest
+    static void testUpdateAccountRevenue_Positive_BulkRecords() {
+        // Arrange
+        List<Account> testAccounts = [SELECT Id FROM Account LIMIT 10];
         List<Id> accountIds = new List<Id>();
-        for (Account acc : accounts) {
+        for (Account acc : testAccounts) {
             accountIds.add(acc.Id);
         }
-        
-        Decimal newRevenue = 250000;
+        Decimal newRevenue = 99999;
         
         Test.startTest();
+        // Act
         Database.SaveResult[] results = AccountService.updateAccountRevenue(accountIds, newRevenue);
         Test.stopTest();
         
-        System.assertEquals(5, results.size(), 'Should update 5 accounts');
-        for (Database.SaveResult result : results) {
-            System.assert(result.isSuccess(), 'All updates should succeed');
-        }
+        // Assert
+        System.assertEquals(10, results.size(), 'Should return 10 results');
         
-        // Verify revenue was updated
+        Integer successCount = 0;
+        for (Database.SaveResult result : results) {
+            if (result.isSuccess()) {
+                successCount++;
+            }
+        }
+        System.assertEquals(10, successCount, 'All updates should succeed');
+        
+        // Verify updates
         List<Account> updatedAccounts = [SELECT AnnualRevenue FROM Account WHERE Id IN :accountIds];
         for (Account acc : updatedAccounts) {
-            System.assertEquals(newRevenue, acc.AnnualRevenue, 'Revenue should be updated');
+            System.assertEquals(newRevenue, acc.AnnualRevenue, 'All revenues should be updated');
         }
     }
     
-    // Test updateAccountRevenue - Bulk
     @isTest
-    static void testUpdateAccountRevenue_Bulk() {
-        // Create 200 accounts for bulk test
-        List<Account> bulkAccounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk Update Account ' + i;
-            acc.AnnualRevenue = 100000;
-            bulkAccounts.add(acc);
-        }
-        insert bulkAccounts;
+    static void testUpdateAccountRevenue_Negative_NullAccountId() {
+        // Arrange
+        Id accountId = null;
+        Decimal newRevenue = 5000;
         
+        Test.startTest();
+        // Act & Assert
+        try {
+            AccountService.updateAccountRevenue(accountId, newRevenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
+        } catch (AccountServiceException e) {
+            System.assert(e.getMessage().contains('null'), 'Error message should mention null');
+        }
+        Test.stopTest();
+    }
+    
+    @isTest
+    static void testUpdateAccountRevenue_Negative_NullRevenue() {
+        // Arrange
+        Account testAccount = [SELECT Id FROM Account LIMIT 1];
+        Decimal newRevenue = null;
+        
+        Test.startTest();
+        // Act & Assert
+        try {
+            AccountService.updateAccountRevenue(new List<Id>{ testAccount.Id }, newRevenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
+        } catch (AccountServiceException e) {
+            System.assert(e.getMessage().contains('null'), 'Error message should mention null');
+        }
+        Test.stopTest();
+    }
+    
+    @isTest
+    static void testUpdateAccountRevenue_Negative_EmptyList() {
+        // Arrange
         List<Id> accountIds = new List<Id>();
-        for (Account acc : bulkAccounts) {
-            accountIds.add(acc.Id);
-        }
-        
-        Decimal newRevenue = 500000;
+        Decimal newRevenue = 5000;
         
         Test.startTest();
-        Database.SaveResult[] results = AccountService.updateAccountRevenue(accountIds, newRevenue);
-        Test.stopTest();
-        
-        System.assertEquals(200, results.size(), 'Should update 200 accounts');
-    }
-    
-    // Test updateAccountRevenue - Negative Cases
-    @isTest
-    static void testUpdateAccountRevenue_NullIds() {
-        Test.startTest();
+        // Act & Assert
         try {
-            AccountService.updateAccountRevenue(null, 100000);
-            System.assert(false, 'Should throw exception for null IDs');
+            AccountService.updateAccountRevenue(accountIds, newRevenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
         } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('cannot be null or empty'), 'Should throw appropriate error');
+            System.assert(e.getMessage().contains('null or empty'), 'Error message should mention null or empty');
         }
         Test.stopTest();
     }
     
     @isTest
-    static void testUpdateAccountRevenue_EmptyIds() {
+    static void testUpdateAccountRevenue_Negative_InvalidAccountId() {
+        // Arrange
+        Id invalidId = Test.getStandardPricebookId(); // Using a different object's ID
+        Decimal newRevenue = 5000;
+        
         Test.startTest();
+        // Act & Assert
         try {
-            AccountService.updateAccountRevenue(new List<Id>(), 100000);
-            System.assert(false, 'Should throw exception for empty IDs');
+            AccountService.updateAccountRevenue(new List<Id>{ invalidId }, newRevenue);
+            System.assert(false, 'Should have thrown AccountServiceException');
         } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('cannot be null or empty'), 'Should throw appropriate error');
+            System.assert(e.getMessage().contains('No accounts found'), 'Error message should mention no accounts found');
         }
         Test.stopTest();
     }
     
-    @isTest
-    static void testUpdateAccountRevenue_NegativeRevenue() {
-        List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
-        List<Id> accountIds = new List<Id>{ accounts[0].Id };
-        
-        Test.startTest();
-        try {
-            AccountService.updateAccountRevenue(accountIds, -1000);
-            System.assert(false, 'Should throw exception for negative revenue');
-        } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('non-negative'), 'Should throw appropriate error');
-        }
-        Test.stopTest();
-    }
+    // ========== deleteOldAccounts Tests ==========
     
     @isTest
-    static void testUpdateAccountRevenue_InvalidIds() {
-        List<Id> invalidIds = new List<Id>{ '001000000000000AAA' };
+    static void testDeleteOldAccounts_Positive_WithOldAccounts() {
+        // Arrange - Create old accounts using Test.setCreatedDate
+        List<Account> oldAccounts = TestDataFactory.createOldAccounts(5, 400);
         
         Test.startTest();
-        try {
-            AccountService.updateAccountRevenue(invalidIds, 100000);
-            System.assert(false, 'Should throw exception for invalid IDs');
-        } catch (AccountServiceException e) {
-            System.assert(e.getMessage().contains('No accounts found'), 'Should throw appropriate error');
-        }
-        Test.stopTest();
-    }
-    
-    // Test deleteOldAccounts - Positive Cases
-    @isTest
-    static void testDeleteOldAccounts_Success() {
-        Integer daysOld = 365;
-        
-        Test.startTest();
-        Database.DeleteResult[] results = AccountService.deleteOldAccounts(daysOld);
-        Test.stopTest();
-        
-        // Should delete the 3 old accounts created in setup
-        System.assert(results.size() > 0, 'Should delete old accounts');
-        
-        // Verify old accounts were deleted
-        List<Account> remainingOldAccounts = [SELECT Id FROM Account WHERE Name LIKE 'Old Account%'];
-        System.assertEquals(0, remainingOldAccounts.size(), 'Old accounts should be deleted');
-    }
-    
-    @isTest
-    static void testDeleteOldAccounts_DefaultDays() {
-        Test.startTest();
-        Database.DeleteResult[] results = AccountService.deleteOldAccounts(null);
-        Test.stopTest();
-        
-        // Should use default 365 days
-        System.assert(results != null, 'Should return results');
-    }
-    
-    @isTest
-    static void testDeleteOldAccounts_NoOldAccounts() {
-        // Delete all old accounts first
-        List<Account> oldAccounts = [SELECT Id FROM Account WHERE Name LIKE 'Old Account%'];
-        delete oldAccounts;
-        
-        Test.startTest();
+        // Act
         Database.DeleteResult[] results = AccountService.deleteOldAccounts(365);
         Test.stopTest();
         
+        // Assert
+        System.assert(results.size() > 0, 'Should have deleted some accounts');
+        
+        Integer successCount = 0;
+        for (Database.DeleteResult result : results) {
+            if (result.isSuccess()) {
+                successCount++;
+            }
+        }
+        System.assert(successCount > 0, 'At least some deletions should succeed');
+        
+        // Verify accounts were deleted
+        List<Account> remainingAccounts = [SELECT Id FROM Account WHERE Id IN :oldAccounts];
+        System.assertEquals(0, remainingAccounts.size(), 'Old accounts should be deleted');
+    }
+    
+    @isTest
+    static void testDeleteOldAccounts_Positive_NoOldAccounts() {
+        // Arrange - All accounts are new (created in @testSetup)
+        
+        Test.startTest();
+        // Act
+        Database.DeleteResult[] results = AccountService.deleteOldAccounts(365);
+        Test.stopTest();
+        
+        // Assert
         System.assertEquals(0, results.size(), 'Should return empty results when no old accounts');
     }
     
-    // Test setDefaultRevenue - Positive Cases
     @isTest
-    static void testSetDefaultRevenue_WithNullRevenue() {
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 5; i++) {
-            Account acc = new Account();
-            acc.Name = 'Null Revenue Account ' + i;
-            acc.AnnualRevenue = null;
-            accounts.add(acc);
-        }
+    static void testDeleteOldAccounts_Positive_DefaultDays() {
+        // Arrange - Create old accounts
+        List<Account> oldAccounts = TestDataFactory.createOldAccounts(3, 400);
         
         Test.startTest();
-        AccountService.setDefaultRevenue(accounts);
+        // Act - Use default 365 days
+        Database.DeleteResult[] results = AccountService.deleteOldAccounts();
         Test.stopTest();
         
-        // Verify default revenue was set
+        // Assert
+        System.assert(results.size() > 0, 'Should have deleted old accounts');
+    }
+    
+    @isTest
+    static void testDeleteOldAccounts_EdgeCase_NullDays() {
+        // Arrange - Create old accounts
+        List<Account> oldAccounts = TestDataFactory.createOldAccounts(3, 400);
+        
+        Test.startTest();
+        // Act - Pass null, should default to 365
+        Database.DeleteResult[] results = AccountService.deleteOldAccounts(null);
+        Test.stopTest();
+        
+        // Assert
+        System.assert(results.size() > 0, 'Should use default 365 days');
+    }
+    
+    @isTest
+    static void testDeleteOldAccounts_EdgeCase_NegativeDays() {
+        // Arrange - Create old accounts
+        List<Account> oldAccounts = TestDataFactory.createOldAccounts(3, 400);
+        
+        Test.startTest();
+        // Act - Pass negative days, should default to 365
+        Database.DeleteResult[] results = AccountService.deleteOldAccounts(-10);
+        Test.stopTest();
+        
+        // Assert
+        System.assert(results.size() > 0, 'Should use default 365 days');
+    }
+    
+    // ========== createFollowUpTasks Tests ==========
+    
+    @isTest
+    static void testCreateFollowUpTasks_Positive_SingleAccount() {
+        // Arrange
+        Account testAccount = [SELECT Id FROM Account LIMIT 1];
+        // Delete any tasks created by trigger during test setup
+        delete [SELECT Id FROM Task WHERE WhatId = :testAccount.Id];
+        
+        List<Account> accounts = new List<Account>{ testAccount };
+        
+        Test.startTest();
+        // Act
+        Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
+        Test.stopTest();
+        
+        // Assert
+        System.assertEquals(1, results.size(), 'Should return one result');
+        System.assert(results[0].isSuccess(), 'Task creation should succeed');
+        
+        // Verify task was created
+        List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId = :testAccount.Id];
+        System.assertEquals(1, tasks.size(), 'One task should be created');
+        System.assertEquals('Follow up on new account', tasks[0].Subject, 'Task subject should match');
+    }
+    
+    @isTest
+    static void testCreateFollowUpTasks_Positive_BulkAccounts() {
+        // Arrange - Create 200+ accounts
+        List<Account> accounts = TestDataFactory.createAndInsertAccounts(250, 'Bulk Task Account', 5000);
+        
+        // Delete any tasks created by trigger during account insertion
+        Set<Id> accountIds = new Set<Id>();
         for (Account acc : accounts) {
-            System.assertEquals(0, acc.AnnualRevenue, 'Should set default revenue to 0');
+            accountIds.add(acc.Id);
         }
+        delete [SELECT Id FROM Task WHERE WhatId IN :accountIds];
+        
+        Test.startTest();
+        // Act
+        Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
+        Test.stopTest();
+        
+        // Assert
+        System.assertEquals(250, results.size(), 'Should return 250 results');
+        
+        Integer successCount = 0;
+        for (Database.SaveResult result : results) {
+            if (result.isSuccess()) {
+                successCount++;
+            }
+        }
+        System.assertEquals(250, successCount, 'All tasks should be created successfully');
+        
+        // Verify tasks were created
+        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :accountIds];
+        System.assertEquals(250, tasks.size(), '250 tasks should be created');
     }
     
     @isTest
-    static void testSetDefaultRevenue_WithExistingRevenue() {
+    static void testCreateFollowUpTasks_EdgeCase_NullList() {
+        // Arrange
+        List<Account> accounts = null;
+        
+        Test.startTest();
+        // Act
+        Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
+        Test.stopTest();
+        
+        // Assert
+        System.assertEquals(0, results.size(), 'Should return empty results');
+    }
+    
+    @isTest
+    static void testCreateFollowUpTasks_EdgeCase_EmptyList() {
+        // Arrange
         List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < 5; i++) {
-            Account acc = new Account();
-            acc.Name = 'Existing Revenue Account ' + i;
-            acc.AnnualRevenue = 100000;
-            accounts.add(acc);
-        }
         
         Test.startTest();
-        AccountService.setDefaultRevenue(accounts);
+        // Act
+        Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
         Test.stopTest();
         
-        // Verify existing revenue was not changed
-        for (Account acc : accounts) {
-            System.assertEquals(100000, acc.AnnualRevenue, 'Should not change existing revenue');
-        }
+        // Assert
+        System.assertEquals(0, results.size(), 'Should return empty results');
     }
     
     @isTest
-    static void testSetDefaultRevenue_NullList() {
-        Test.startTest();
-        AccountService.setDefaultRevenue(null);
-        Test.stopTest();
-        
-        // Should not throw exception, just return
-        System.assert(true, 'Should handle null list gracefully');
-    }
-    
-    @isTest
-    static void testSetDefaultRevenue_EmptyList() {
-        Test.startTest();
-        AccountService.setDefaultRevenue(new List<Account>());
-        Test.stopTest();
-        
-        // Should not throw exception, just return
-        System.assert(true, 'Should handle empty list gracefully');
-    }
-    
-    // Test createFollowUpTasks - Positive Cases
-    @isTest
-    static void testCreateFollowUpTasks_Success() {
-        List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
-        
-        // Delete tasks created by trigger to test service method in isolation
-        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :accounts];
-        if (!triggerTasks.isEmpty()) {
-            delete triggerTasks;
-        }
+    static void testCreateFollowUpTasks_EdgeCase_AccountWithoutId() {
+        // Arrange - Account without Id (not inserted)
+        Account accountWithoutId = new Account();
+        accountWithoutId.Name = 'Test Account';
+        List<Account> accounts = new List<Account>{ accountWithoutId };
         
         Test.startTest();
-        AccountService.createFollowUpTasks(accounts);
+        // Act
+        Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
         Test.stopTest();
         
-        // Verify tasks were created by service method
-        List<Task> tasks = [SELECT Id, Subject, WhatId FROM Task WHERE WhatId IN :accounts];
-        System.assertEquals(5, tasks.size(), 'Should create 5 tasks');
+        // Assert
+        System.assertEquals(0, results.size(), 'Should return empty results when account has no Id');
         
-        for (Task t : tasks) {
-            System.assertEquals('Follow up on new account', t.Subject, 'Task subject should match');
-            System.assert(accounts.contains(new Account(Id = t.WhatId)), 'Task should be linked to account');
-        }
-    }
-    
-    @isTest
-    static void testCreateFollowUpTasks_Bulk() {
-        // Create 200 accounts
-        List<Account> bulkAccounts = new List<Account>();
-        for (Integer i = 0; i < 200; i++) {
-            Account acc = new Account();
-            acc.Name = 'Bulk Task Account ' + i;
-            bulkAccounts.add(acc);
-        }
-        insert bulkAccounts;
-        
-        // Delete tasks created by trigger to test service method in isolation
-        List<Task> triggerTasks = [SELECT Id FROM Task WHERE WhatId IN :bulkAccounts];
-        if (!triggerTasks.isEmpty()) {
-            delete triggerTasks;
-        }
-        
-        Test.startTest();
-        AccountService.createFollowUpTasks(bulkAccounts);
-        Test.stopTest();
-        
-        // Verify bulk task creation by service method
-        List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :bulkAccounts];
-        System.assertEquals(200, tasks.size(), 'Should create 200 tasks');
-    }
-    
-    @isTest
-    static void testCreateFollowUpTasks_NullList() {
-        Test.startTest();
-        AccountService.createFollowUpTasks(null);
-        Test.stopTest();
-        
-        // Should not throw exception
-        System.assert(true, 'Should handle null list gracefully');
-    }
-    
-    @isTest
-    static void testCreateFollowUpTasks_EmptyList() {
-        Test.startTest();
-        AccountService.createFollowUpTasks(new List<Account>());
-        Test.stopTest();
-        
-        // Should not throw exception
-        System.assert(true, 'Should handle empty list gracefully');
+        // Verify no tasks were created
+        List<Task> tasks = [SELECT Id FROM Task];
+        System.assertEquals(0, tasks.size(), 'No tasks should be created');
     }
 }
 

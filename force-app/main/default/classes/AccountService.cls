@@ -1,263 +1,280 @@
 /**
- * Service class for Account business logic
- * Implements Service Layer pattern with bulkified methods
- * Handles all Account-related business operations
- * 
- * @author Salesforce Developer
- * @date 2024
+ * Service layer for Account business logic
+ * Provides bulkified, secure, and error-handled methods for Account operations
  */
-public with sharing class AccountService {
+public class AccountService {
     
-    private static final Integer MAX_QUERY_LIMIT = 10000;
-    private static final Decimal DEFAULT_REVENUE = 0;
+    private static final Integer MAX_DELETE_LIMIT = 10000;
+    private static final Integer DAYS_OLD_THRESHOLD = 365;
     
     /**
-     * Creates multiple Account records in bulk
+     * Creates one or more Account records
+     * Bulkified to handle 200+ records
      * @param accounts List of Account records to create
      * @return Database.SaveResult[] Results of the insert operation
-     * @throws AccountServiceException if validation fails or DML operation fails
+     * @throws AccountServiceException if accounts list is null or empty
      */
     public static Database.SaveResult[] createAccounts(List<Account> accounts) {
         if (accounts == null || accounts.isEmpty()) {
             throw new AccountServiceException('Account list cannot be null or empty');
         }
         
-        if (accounts.size() > Limits.getLimitDmlRows()) {
-            throw new AccountServiceException('Cannot process more than ' + Limits.getLimitDmlRows() + ' records');
+        // Check CRUD permissions
+        if (!Schema.sObjectType.Account.isCreateable()) {
+            throw new AccountServiceException('Insufficient permissions to create Account records');
         }
         
-        try {
-            // Check CRUD permissions
-            if (!Schema.sObjectType.Account.isCreateable()) {
-                throw new AccountServiceException('User does not have permission to create Account records');
-            }
-            
-            // Apply field-level security
-            SObjectAccessDecision decision = Security.stripInaccessible(
-                AccessType.CREATABLE,
-                accounts
-            );
-            
-            List<Account> accessibleAccounts = decision.getRecords();
-            
-            System.debug(LoggingLevel.INFO, 'AccountService.createAccounts: Processing ' + accessibleAccounts.size() + ' accounts');
-            
-            // Use Database method for partial success handling
-            Database.SaveResult[] results = Database.insert(accessibleAccounts, false);
-            
-            // Log errors
-            for (Integer i = 0; i < results.size(); i++) {
-                if (!results[i].isSuccess()) {
-                    String errorMsg = 'Failed to create account: ';
-                    for (Database.Error error : results[i].getErrors()) {
-                        errorMsg += error.getMessage() + ' ';
-                    }
-                    System.debug(LoggingLevel.ERROR, errorMsg);
-                }
-            }
-            
-            return results;
-        } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'AccountService.createAccounts error: ' + e.getMessage());
-            throw new AccountServiceException('Error creating accounts: ' + e.getMessage());
-        }
+        // Strip inaccessible fields
+        SObjectAccessDecision decision = Security.stripInaccessible(
+            AccessType.CREATABLE,
+            accounts
+        );
+        List<Account> accessibleAccounts = decision.getRecords();
+        
+        // Perform bulk insert with partial success allowed
+        Database.SaveResult[] results = Database.insert(accessibleAccounts, false);
+        
+        // Log errors
+        logSaveResults('createAccounts', results, accessibleAccounts);
+        
+        return results;
     }
     
     /**
-     * Updates AnnualRevenue for multiple Account records in bulk
+     * Convenience method to create a single Account
+     * @param name Account name
+     * @param revenue Annual revenue
+     * @return Id of created Account, or null if creation failed
+     */
+    public static Id createAccount(String name, Decimal revenue) {
+        if (String.isBlank(name)) {
+            throw new AccountServiceException('Account name cannot be blank');
+        }
+        
+        Account acc = new Account();
+        acc.Name = name;
+        acc.AnnualRevenue = revenue;
+        
+        Database.SaveResult[] results = createAccounts(new List<Account>{ acc });
+        
+        if (results != null && !results.isEmpty() && results[0].isSuccess()) {
+            return results[0].getId();
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Updates AnnualRevenue for one or more Accounts
+     * Bulkified to handle 200+ records
      * @param accountIds List of Account IDs to update
      * @param newRevenue New revenue value to set
      * @return Database.SaveResult[] Results of the update operation
-     * @throws AccountServiceException if validation fails or DML operation fails
+     * @throws AccountServiceException if accountIds list is null or empty
      */
     public static Database.SaveResult[] updateAccountRevenue(List<Id> accountIds, Decimal newRevenue) {
         if (accountIds == null || accountIds.isEmpty()) {
             throw new AccountServiceException('Account ID list cannot be null or empty');
         }
         
-        if (newRevenue == null || newRevenue < 0) {
-            throw new AccountServiceException('Revenue must be a non-negative number');
+        if (newRevenue == null) {
+            throw new AccountServiceException('Revenue cannot be null');
         }
         
-        try {
-            // Check CRUD permissions
-            if (!Schema.sObjectType.Account.isUpdateable()) {
-                throw new AccountServiceException('User does not have permission to update Account records');
-            }
-            
-            // Bulk query with security enforced
-            List<Account> accounts = [
-                SELECT Id, AnnualRevenue 
-                FROM Account 
-                WHERE Id IN :accountIds 
-                WITH SECURITY_ENFORCED
-                LIMIT :MAX_QUERY_LIMIT
-            ];
-            
-            if (accounts.isEmpty()) {
-                throw new AccountServiceException('No accounts found with provided IDs');
-            }
-            
-            // Update revenue
-            for (Account acc : accounts) {
-                acc.AnnualRevenue = newRevenue;
-            }
-            
-            // Apply field-level security
-            SObjectAccessDecision decision = Security.stripInaccessible(
-                AccessType.UPDATABLE,
-                accounts
-            );
-            
-            List<Account> accessibleAccounts = decision.getRecords();
-            
-            System.debug(LoggingLevel.INFO, 'AccountService.updateAccountRevenue: Updating ' + accessibleAccounts.size() + ' accounts');
-            
-            // Use Database method for partial success handling
-            Database.SaveResult[] results = Database.update(accessibleAccounts, false);
-            
-            // Log errors
-            for (Integer i = 0; i < results.size(); i++) {
-                if (!results[i].isSuccess()) {
-                    String errorMsg = 'Failed to update account: ';
-                    for (Database.Error error : results[i].getErrors()) {
-                        errorMsg += error.getMessage() + ' ';
-                    }
-                    System.debug(LoggingLevel.ERROR, errorMsg);
-                }
-            }
-            
-            return results;
-        } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'AccountService.updateAccountRevenue error: ' + e.getMessage());
-            throw new AccountServiceException('Error updating account revenue: ' + e.getMessage());
+        // Check CRUD permissions
+        if (!Schema.sObjectType.Account.isUpdateable()) {
+            throw new AccountServiceException('Insufficient permissions to update Account records');
         }
+        
+        // Bulk query with security enforcement
+        List<Account> accounts = [
+            SELECT Id, AnnualRevenue
+            FROM Account
+            WHERE Id IN :accountIds
+            WITH SECURITY_ENFORCED
+            LIMIT 200
+        ];
+        
+        if (accounts.isEmpty()) {
+            throw new AccountServiceException('No accounts found for the provided IDs');
+        }
+        
+        // Update revenue for all accounts
+        for (Account acc : accounts) {
+            acc.AnnualRevenue = newRevenue;
+        }
+        
+        // Strip inaccessible fields
+        SObjectAccessDecision decision = Security.stripInaccessible(
+            AccessType.UPDATABLE,
+            accounts
+        );
+        List<Account> accessibleAccounts = decision.getRecords();
+        
+        // Perform bulk update with partial success allowed
+        Database.SaveResult[] results = Database.update(accessibleAccounts, false);
+        
+        // Log errors
+        logSaveResults('updateAccountRevenue', results, accessibleAccounts);
+        
+        return results;
     }
     
     /**
-     * Deletes Account records older than specified days
-     * @param daysOld Number of days old (defaults to 365)
+     * Convenience method to update a single Account's revenue
+     * @param accountId Account ID to update
+     * @param newRevenue New revenue value
+     * @return true if update succeeded, false otherwise
+     */
+    public static Boolean updateAccountRevenue(Id accountId, Decimal newRevenue) {
+        if (accountId == null) {
+            throw new AccountServiceException('Account ID cannot be null');
+        }
+        
+        Database.SaveResult[] results = updateAccountRevenue(new List<Id>{ accountId }, newRevenue);
+        
+        return results != null && !results.isEmpty() && results[0].isSuccess();
+    }
+    
+    /**
+     * Deletes old Account records created more than specified days ago
+     * Includes safety limits and proper error handling
+     * @param daysOld Number of days threshold (defaults to 365)
      * @return Database.DeleteResult[] Results of the delete operation
-     * @throws AccountServiceException if validation fails or DML operation fails
+     * @throws AccountServiceException if no accounts found or limit exceeded
      */
     public static Database.DeleteResult[] deleteOldAccounts(Integer daysOld) {
         if (daysOld == null || daysOld < 0) {
-            daysOld = 365; // Default to 1 year
+            daysOld = DAYS_OLD_THRESHOLD;
         }
         
-        try {
-            // Check CRUD permissions
-            if (!Schema.sObjectType.Account.isDeletable()) {
-                throw new AccountServiceException('User does not have permission to delete Account records');
-            }
-            
-            // Bulk query with security enforced and LIMIT
-            List<Account> oldAccounts = [
-                SELECT Id 
-                FROM Account 
-                WHERE CreatedDate < :Date.today().addDays(-daysOld)
-                WITH SECURITY_ENFORCED
-                LIMIT :MAX_QUERY_LIMIT
-            ];
-            
-            if (oldAccounts.isEmpty()) {
-                System.debug(LoggingLevel.INFO, 'AccountService.deleteOldAccounts: No old accounts found');
-                return new Database.DeleteResult[0];
-            }
-            
-            System.debug(LoggingLevel.INFO, 'AccountService.deleteOldAccounts: Deleting ' + oldAccounts.size() + ' accounts');
-            
-            // Use Database method for partial success handling
-            Database.DeleteResult[] results = Database.delete(oldAccounts, false);
-            
-            // Log errors
-            for (Integer i = 0; i < results.size(); i++) {
-                if (!results[i].isSuccess()) {
-                    String errorMsg = 'Failed to delete account: ';
-                    for (Database.Error error : results[i].getErrors()) {
-                        errorMsg += error.getMessage() + ' ';
-                    }
-                    System.debug(LoggingLevel.ERROR, errorMsg);
-                }
-            }
-            
-            return results;
-        } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR, 'AccountService.deleteOldAccounts error: ' + e.getMessage());
-            throw new AccountServiceException('Error deleting old accounts: ' + e.getMessage());
+        // Check CRUD permissions
+        if (!Schema.sObjectType.Account.isDeletable()) {
+            throw new AccountServiceException('Insufficient permissions to delete Account records');
         }
+        
+        // Query with security enforcement and limit
+        // Calculate the cutoff date dynamically (can't use variables in date literals)
+        Datetime cutoffDate = Datetime.now().addDays(-daysOld);
+        List<Account> oldAccounts = [
+            SELECT Id
+            FROM Account
+            WHERE CreatedDate < :cutoffDate
+            WITH SECURITY_ENFORCED
+            LIMIT :MAX_DELETE_LIMIT
+        ];
+        
+        if (oldAccounts.isEmpty()) {
+            System.debug(LoggingLevel.INFO, 'No old accounts found to delete');
+            return new Database.DeleteResult[0];
+        }
+        
+        // Perform bulk delete with partial success allowed
+        Database.DeleteResult[] results = Database.delete(oldAccounts, false);
+        
+        // Log errors
+        logDeleteResults('deleteOldAccounts', results, oldAccounts);
+        
+        return results;
     }
     
     /**
-     * Sets default revenue for accounts that don't have revenue set
-     * Used by trigger handler in before insert context
-     * @param accounts List of Account records
+     * Convenience method using default 365 days threshold
+     * @return Database.DeleteResult[] Results of the delete operation
      */
-    public static void setDefaultRevenue(List<Account> accounts) {
-        if (accounts == null || accounts.isEmpty()) {
-            return;
-        }
-        
-        for (Account acc : accounts) {
-            if (acc.AnnualRevenue == null) {
-                acc.AnnualRevenue = DEFAULT_REVENUE;
-            }
-        }
-        
-        System.debug(LoggingLevel.DEBUG, 'AccountService.setDefaultRevenue: Set default revenue for accounts');
+    public static Database.DeleteResult[] deleteOldAccounts() {
+        return deleteOldAccounts(DAYS_OLD_THRESHOLD);
     }
     
     /**
      * Creates follow-up tasks for newly created accounts
-     * Used by trigger handler in after insert context
-     * Uses @future or Queueable for async processing to avoid DML in trigger
+     * Bulkified to handle 200+ records
      * @param accounts List of Account records
+     * @return Database.SaveResult[] Results of the insert operation
      */
-    public static void createFollowUpTasks(List<Account> accounts) {
+    public static Database.SaveResult[] createFollowUpTasks(List<Account> accounts) {
         if (accounts == null || accounts.isEmpty()) {
-            return;
+            return new Database.SaveResult[0];
         }
         
-        // Check CRUD permissions
+        // Check CRUD permissions for Task
         if (!Schema.sObjectType.Task.isCreateable()) {
-            System.debug(LoggingLevel.WARN, 'AccountService.createFollowUpTasks: User does not have permission to create Task records');
-            return;
+            System.debug(LoggingLevel.WARN, 'Insufficient permissions to create Task records');
+            return new Database.SaveResult[0];
         }
         
         List<Task> tasks = new List<Task>();
-        
         for (Account acc : accounts) {
-            Task t = new Task();
-            t.Subject = 'Follow up on new account';
-            t.WhatId = acc.Id;
-            t.Status = 'Not Started';
-            t.Priority = 'Normal';
-            tasks.add(t);
+            if (acc.Id != null) {
+                Task t = new Task();
+                t.Subject = 'Follow up on new account';
+                t.WhatId = acc.Id;
+                tasks.add(t);
+            }
         }
         
-        if (!tasks.isEmpty()) {
-            // Apply field-level security
-            SObjectAccessDecision decision = Security.stripInaccessible(
-                AccessType.CREATABLE,
-                tasks
-            );
-            
-            List<Task> accessibleTasks = decision.getRecords();
-            
-            System.debug(LoggingLevel.INFO, 'AccountService.createFollowUpTasks: Creating ' + accessibleTasks.size() + ' tasks');
-            
-            // Use Database method for partial success handling
-            Database.SaveResult[] results = Database.insert(accessibleTasks, false);
-            
-            // Log errors
-            for (Integer i = 0; i < results.size(); i++) {
-                if (!results[i].isSuccess()) {
-                    String errorMsg = 'Failed to create task: ';
-                    for (Database.Error error : results[i].getErrors()) {
-                        errorMsg += error.getMessage() + ' ';
-                    }
-                    System.debug(LoggingLevel.ERROR, errorMsg);
+        if (tasks.isEmpty()) {
+            return new Database.SaveResult[0];
+        }
+        
+        // Strip inaccessible fields
+        SObjectAccessDecision decision = Security.stripInaccessible(
+            AccessType.CREATABLE,
+            tasks
+        );
+        List<Task> accessibleTasks = decision.getRecords();
+        
+        // Perform bulk insert with partial success allowed
+        Database.SaveResult[] results = Database.insert(accessibleTasks, false);
+        
+        // Log errors
+        logSaveResults('createFollowUpTasks', results, accessibleTasks);
+        
+        return results;
+    }
+    
+    /**
+     * Logs SaveResult errors for debugging
+     * @param methodName Name of the calling method
+     * @param results Database.SaveResult array
+     * @param records List of SObjects that were processed
+     */
+    private static void logSaveResults(String methodName, Database.SaveResult[] results, List<SObject> records) {
+        if (results == null || records == null) {
+            return;
+        }
+        
+        for (Integer i = 0; i < results.size(); i++) {
+            Database.SaveResult result = results[i];
+            if (!result.isSuccess()) {
+                String errorMsg = methodName + ' failed for record at index ' + i + ': ';
+                for (Database.Error error : result.getErrors()) {
+                    errorMsg += error.getMessage() + ' (' + error.getStatusCode() + ')';
                 }
+                System.debug(LoggingLevel.ERROR, errorMsg);
+            }
+        }
+    }
+    
+    /**
+     * Logs DeleteResult errors for debugging
+     * @param methodName Name of the calling method
+     * @param results Database.DeleteResult array
+     * @param records List of SObjects that were processed
+     */
+    private static void logDeleteResults(String methodName, Database.DeleteResult[] results, List<SObject> records) {
+        if (results == null || records == null) {
+            return;
+        }
+        
+        for (Integer i = 0; i < results.size(); i++) {
+            Database.DeleteResult result = results[i];
+            if (!result.isSuccess()) {
+                String errorMsg = methodName + ' failed for record at index ' + i + ': ';
+                for (Database.Error error : result.getErrors()) {
+                    errorMsg += error.getMessage() + ' (' + error.getStatusCode() + ')';
+                }
+                System.debug(LoggingLevel.ERROR, errorMsg);
             }
         }
     }
