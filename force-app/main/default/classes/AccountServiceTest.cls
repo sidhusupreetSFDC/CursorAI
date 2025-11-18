@@ -364,6 +364,9 @@ private class AccountServiceTest {
     static void testCreateFollowUpTasks_Positive_SingleAccount() {
         // Arrange
         Account testAccount = [SELECT Id FROM Account LIMIT 1];
+        // Delete any tasks created by trigger during test setup
+        delete [SELECT Id FROM Task WHERE WhatId = :testAccount.Id];
+        
         List<Account> accounts = new List<Account>{ testAccount };
         
         Test.startTest();
@@ -386,6 +389,13 @@ private class AccountServiceTest {
         // Arrange - Create 200+ accounts
         List<Account> accounts = TestDataFactory.createAndInsertAccounts(250, 'Bulk Task Account', 5000);
         
+        // Delete any tasks created by trigger during account insertion
+        Set<Id> accountIds = new Set<Id>();
+        for (Account acc : accounts) {
+            accountIds.add(acc.Id);
+        }
+        delete [SELECT Id FROM Task WHERE WhatId IN :accountIds];
+        
         Test.startTest();
         // Act
         Database.SaveResult[] results = AccountService.createFollowUpTasks(accounts);
@@ -403,10 +413,6 @@ private class AccountServiceTest {
         System.assertEquals(250, successCount, 'All tasks should be created successfully');
         
         // Verify tasks were created
-        Set<Id> accountIds = new Set<Id>();
-        for (Account acc : accounts) {
-            accountIds.add(acc.Id);
-        }
         List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :accountIds];
         System.assertEquals(250, tasks.size(), '250 tasks should be created');
     }
