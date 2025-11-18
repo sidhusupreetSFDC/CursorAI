@@ -1,82 +1,57 @@
 /**
- * @description Helper class for Account operations
+ * @description Helper class for Account-related operations
  * @author Salesforce Developer
  * @date 2024
  */
-public with sharing class AccountHelper {
-    private static final Decimal TARGET_ANNUAL_REVENUE = 1000000;
-
+public class AccountHelper {
+    
     /**
-     * @description Updates AnnualRevenue for the provided Account records
-     * @param accountIds List of Account Ids to update
-     * @throws AccountHelperException if operation fails
+     * @description Updates Annual Revenue for a list of Account records
+     * @param accountIds List of Account IDs to update
+     * @throws DmlException if update operation fails
      */
     public static void updateAccounts(List<Id> accountIds) {
+        // Validate input
         if (accountIds == null || accountIds.isEmpty()) {
             return;
         }
-
-        List<Account> accountsToUpdate = fetchAccounts(accountIds);
-        if (accountsToUpdate.isEmpty()) {
-            return;
+        
+        // Check object-level access
+        if (!Schema.sObjectType.Account.isUpdateable()) {
+            throw new SecurityException('Insufficient permissions to update Account records');
         }
-
-        validateFieldAccess();
-        applyTargetRevenue(accountsToUpdate);
-        performUpdate(accountsToUpdate);
-    }
-
-    /**
-     * @description Fetches Account records for the provided Ids
-     * @param accountIds List of Account Ids to query
-     * @return List of Account records
-     */
-    private static List<Account> fetchAccounts(List<Id> accountIds) {
-        return [
-            SELECT Id, Name, AnnualRevenue
-            FROM Account
-            WHERE Id IN :accountIds
-            WITH SECURITY_ENFORCED
-        ];
-    }
-
-    /**
-     * @description Validates field-level security for AnnualRevenue
-     * @throws SecurityException if field is not updateable
-     */
-    private static void validateFieldAccess() {
+        
+        // Check field-level access
         if (!Schema.sObjectType.Account.fields.AnnualRevenue.isUpdateable()) {
             throw new SecurityException('Insufficient permissions to update AnnualRevenue field');
         }
-    }
-
-    /**
-     * @description Applies target revenue to all accounts
-     * @param accounts List of Account records to update
-     */
-    private static void applyTargetRevenue(List<Account> accounts) {
-        for (Account acc : accounts) {
-            acc.AnnualRevenue = TARGET_ANNUAL_REVENUE;
-        }
-    }
-
-    /**
-     * @description Performs bulk update operation
-     * @param accounts List of Account records to update
-     * @throws AccountHelperException if update fails
-     */
-    private static void performUpdate(List<Account> accounts) {
+        
         try {
-            update accounts;
+            // Bulkify SOQL query - fetch all accounts in a single query
+            List<Account> accountsToUpdate = [
+                SELECT Id, Name, AnnualRevenue 
+                FROM Account 
+                WHERE Id IN :accountIds
+                WITH SECURITY_ENFORCED
+            ];
+            
+            // Update accounts in bulk
+            for (Account acc : accountsToUpdate) {
+                acc.AnnualRevenue = 1000000;
+            }
+            
+            // Bulk DML operation
+            if (!accountsToUpdate.isEmpty()) {
+                update accountsToUpdate;
+            }
         } catch (DmlException e) {
-            throw new AccountHelperException('Error updating Accounts: ' + e.getMessage(), e);
-        } catch (Exception e) {
-            throw new AccountHelperException('Unexpected error updating Accounts: ' + e.getMessage(), e);
+            // Log error and rethrow
+            System.debug(LoggingLevel.ERROR, 'Error updating Accounts: ' + e.getMessage());
+            throw e;
+        } catch (QueryException e) {
+            // Log error and rethrow
+            System.debug(LoggingLevel.ERROR, 'Error querying Accounts: ' + e.getMessage());
+            throw e;
         }
     }
-
-    /**
-     * @description Custom exception class for AccountHelper operations
-     */
-    public class AccountHelperException extends Exception {}
 }
