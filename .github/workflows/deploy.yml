@@ -97,13 +97,13 @@ jobs:
 
       - name: 🔐 Authenticate Salesforce Org
         env:
-          SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
         run: |
-          if [ -z "$SF_ORG_URL" ]; then
-            echo "⚠️ SF_ORG_URL secret not set. Skipping authentication."
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "⚠️ SFDX_AUTH_URL secret not set. Skipping authentication."
             exit 1
           fi
-          echo "$SF_ORG_URL" > /tmp/sfdx-url.txt
+          echo "$SFDX_AUTH_URL" > /tmp/sfdx-url.txt
           sf org login sfdx-url \
             --sfdx-url-file /tmp/sfdx-url.txt \
             --alias ci-org \
@@ -175,13 +175,13 @@ jobs:
 
       - name: 🔐 Authenticate Salesforce Org
         env:
-          SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
         run: |
-          if [ -z "$SF_ORG_URL" ]; then
-            echo "❌ SF_ORG_URL secret not set. Cannot deploy."
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "❌ SFDX_AUTH_URL secret not set. Cannot deploy."
             exit 1
           fi
-          echo "$SF_ORG_URL" > /tmp/sfdx-url.txt
+          echo "$SFDX_AUTH_URL" > /tmp/sfdx-url.txt
           sf org login sfdx-url \
             --sfdx-url-file /tmp/sfdx-url.txt \
             --alias deploy-org \
