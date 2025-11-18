@@ -116,11 +116,25 @@ jobs:
         id: validate
         continue-on-error: true
         run: |
+          set +e
           sf project deploy validate \
             --source-dir "${{ env.SOURCE_DIR }}" \
             --test-level RunLocalTests \
             --wait 10 \
-            --json > validate-report.json || true
+            --json > validate-report.json
+          VALIDATE_EXIT_CODE=$?
+          set -e
+          
+          # Store exit code for next step
+          echo "VALIDATE_EXIT_CODE=$VALIDATE_EXIT_CODE" >> $GITHUB_ENV
+          
+          # Log the exit code for debugging
+          echo "Validation command exit code: $VALIDATE_EXIT_CODE"
+          
+          # If exit code is 0, validation succeeded regardless of JSON structure
+          if [ "$VALIDATE_EXIT_CODE" -eq 0 ]; then
+            echo "✅ Validation command completed successfully"
+          fi
 
       - name: 📊 Upload Validation Report
         if: always()
@@ -137,12 +151,45 @@ jobs:
 
       - name: ❌ Fail if Validation Failed
         run: |
+          # Check if validation command failed (non-zero exit code)
+          if [ "${VALIDATE_EXIT_CODE:-1}" -ne 0 ]; then
+            echo "❌ Validation command failed with exit code: ${VALIDATE_EXIT_CODE:-1}"
+            if [ -f validate-report.json ]; then
+              echo "Validation report contents:"
+              cat validate-report.json | jq '.' 2>/dev/null || cat validate-report.json
+            fi
+            exit 1
+          fi
+          
+          # Parse JSON if file exists
           if [ -f validate-report.json ]; then
-            STATUS=$(jq -r '.status' validate-report.json 2>/dev/null || echo "unknown")
-            if [ "$STATUS" != "Succeeded" ] && [ "$STATUS" != "unknown" ]; then
+            # Check for different JSON structures
+            STATUS=$(jq -r '.status // .result.status // .result.done // empty' validate-report.json 2>/dev/null || echo "")
+            
+            # Also check if there are any errors in the response
+            HAS_ERRORS=$(jq -r '.result.numberComponentErrors // .numberComponentErrors // 0' validate-report.json 2>/dev/null || echo "0")
+            
+            echo "Validation status from JSON: $STATUS"
+            echo "Component errors: $HAS_ERRORS"
+            
+            # If status exists and indicates failure, fail the build
+            # Note: "0" might be a valid status code, so we check for actual failure statuses
+            if [ -n "$STATUS" ] && [ "$STATUS" != "Succeeded" ] && [ "$STATUS" != "true" ] && [ "$STATUS" != "1" ] && [ "$STATUS" != "0" ]; then
               echo "❌ Validation failed with status: $STATUS"
+              # Show error details if available
+              jq -r '.result.details // .details // empty' validate-report.json 2>/dev/null || true
               exit 1
             fi
+            
+            # Fail if there are component errors
+            if [ "$HAS_ERRORS" != "0" ] && [ "$HAS_ERRORS" != "null" ] && [ -n "$HAS_ERRORS" ]; then
+              echo "❌ Validation found $HAS_ERRORS component errors"
+              exit 1
+            fi
+            
+            echo "✅ Validation completed successfully"
+          else
+            echo "⚠️ Validation report file not found, but command succeeded (exit code: ${VALIDATE_EXIT_CODE:-0})"
           fi
 
   deploy:
@@ -210,11 +257,39 @@ jobs:
       - name: ❌ Fail if Deployment Failed
         run: |
           if [ -f deploy-report.json ]; then
-            STATUS=$(jq -r '.status' deploy-report.json 2>/dev/null || echo "unknown")
-            if [ "$STATUS" != "Succeeded" ] && [ "$STATUS" != "unknown" ]; then
-              echo "❌ Deployment failed with status: $STATUS"
-              exit 1
-            else
+            # Check for different JSON structures
+            STATUS=$(jq -r '.status // .result.status // .result.done // "unknown"' deploy-report.json 2>/dev/null || echo "unknown")
+            
+            # Also check if there are any errors in the response
+            HAS_ERRORS=$(jq -r '.result.numberComponentErrors // .numberComponentErrors // 0' deploy-report.json 2>/dev/null || echo "0")
+            
+            echo "Deployment status: $STATUS"
+            echo "Component errors: $HAS_ERRORS"
+            
+            # Check if status indicates success
+            if [ "$STATUS" = "Succeeded" ] || [ "$STATUS" = "true" ] || [ "$STATUS" = "1" ]; then
               echo "✅ Deployment succeeded!"
+            elif [ "$STATUS" = "unknown" ]; then
+              echo "⚠️ Could not determine deployment status from JSON"
+              # Try to check exit code or look for error messages
+              ERROR_MSG=$(jq -r '.message // .result.message // empty' deploy-report.json 2>/dev/null || echo "")
+              if [ -n "$ERROR_MSG" ]; then
+                echo "❌ Deployment error: $ERROR_MSG"
+                exit 1
+              fi
+            else
+              echo "❌ Deployment failed with status: $STATUS"
+              # Show error details if available
+              jq -r '.result.details // .details // empty' deploy-report.json 2>/dev/null || true
+              exit 1
             fi
+            
+            # Fail if there are component errors
+            if [ "$HAS_ERRORS" != "0" ] && [ "$HAS_ERRORS" != "null" ] && [ -n "$HAS_ERRORS" ]; then
+              echo "❌ Deployment found $HAS_ERRORS component errors"
+              exit 1
+            fi
+          else
+            echo "❌ Deployment report file not found"
+            exit 1
           fi
