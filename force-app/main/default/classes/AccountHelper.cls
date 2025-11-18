@@ -51,7 +51,7 @@ public class AccountHelper {
                 LoggingLevel.ERROR,
                 'Error querying Account: ' + e.getMessage()
             );
-            throw;
+            throw e;
         } catch (Exception e) {
             System.debug(
                 LoggingLevel.ERROR,
