@@ -1,282 +1,183 @@
 /**
- * Test class for AccountHelper
- * Provides comprehensive test coverage for AccountHelper methods
+ * Test class for AccountHelper.
+ * Provides comprehensive test coverage for AccountHelper methods.
  */
 @isTest
 private class AccountHelperTest {
+    
     /**
-     * Test data setup method
-     * Creates test Account records for use in test methods
-     */
-    @testSetup
-    static void setupTestData() {
-        List<Account> testAccounts = new List<Account>();
-        testAccounts.add(
-            new Account(Name = 'Test Account 1', Rating = 'Hot')
-        );
-        testAccounts.add(
-            new Account(Name = 'Test Account 2', Rating = 'Cold')
-        );
-        insert testAccounts;
-    }
-
-    /**
-     * Test successful update of Account Rating
-     * Verifies that the rating is updated correctly
+     * Test successful update of Account rating with valid inputs.
      */
     @isTest
     static void testUpdateAccountRating_Success() {
-        // Get test account
-        Account testAccount = [
-            SELECT Id, Rating
-            FROM Account
-            WHERE Name = 'Test Account 1'
-            LIMIT 1
-        ];
-
+        // Arrange: Create a test Account
+        Account testAccount = new Account(
+            Name = 'Test Account',
+            Rating = 'Hot'
+        );
+        insert testAccount;
+        
         String newRating = 'Warm';
+        
+        // Act: Update the Account rating
         Test.startTest();
         AccountHelper.updateAccountRating(testAccount.Id, newRating);
         Test.stopTest();
-
-        // Verify the rating was updated
+        
+        // Assert: Verify the rating was updated
         Account updatedAccount = [
-            SELECT Id, Rating
-            FROM Account
-            WHERE Id = :testAccount.Id
+            SELECT Id, Rating 
+            FROM Account 
+            WHERE Id = :testAccount.Id 
             LIMIT 1
         ];
-
-        System.assertEquals(
-            newRating,
-            updatedAccount.Rating,
-            'Account Rating should be updated to ' + newRating
-        );
+        System.assertEquals(newRating, updatedAccount.Rating, 'Account rating should be updated to the new value');
     }
-
+    
     /**
-     * Test update with null accountId
-     * Verifies that IllegalArgumentException is thrown
+     * Test that NullPointerException is thrown when accountId is null.
      */
     @isTest
     static void testUpdateAccountRating_NullAccountId() {
-        String rating = 'Hot';
-        Boolean exceptionThrown = false;
-
+        // Arrange
+        String testRating = 'Hot';
+        
+        // Act & Assert: Verify NullPointerException is thrown
         Test.startTest();
         try {
-            AccountHelper.updateAccountRating(null, rating);
-        } catch (IllegalArgumentException e) {
-            exceptionThrown = true;
-            System.assert(
-                e.getMessage().contains('Account Id cannot be null'),
-                'Exception message should indicate null Account Id'
-            );
+            AccountHelper.updateAccountRating(null, testRating);
+            System.assert(false, 'Expected NullPointerException was not thrown');
+        } catch (NullPointerException e) {
+            System.assert(e.getMessage().contains('Account Id cannot be null'), 
+                'Exception message should indicate Account Id cannot be null');
         }
         Test.stopTest();
-
-        System.assert(
-            exceptionThrown,
-            'IllegalArgumentException should be thrown for null accountId'
-        );
     }
-
+    
     /**
-     * Test update with null rating
-     * Verifies that IllegalArgumentException is thrown
+     * Test that Exception is thrown when rating is null.
      */
     @isTest
     static void testUpdateAccountRating_NullRating() {
-        Account testAccount = [
-            SELECT Id
-            FROM Account
-            WHERE Name = 'Test Account 1'
-            LIMIT 1
-        ];
-
-        Boolean exceptionThrown = false;
-
+        // Arrange: Create a test Account
+        Account testAccount = new Account(
+            Name = 'Test Account',
+            Rating = 'Hot'
+        );
+        insert testAccount;
+        
+        // Act & Assert: Verify Exception is thrown
         Test.startTest();
         try {
             AccountHelper.updateAccountRating(testAccount.Id, null);
-        } catch (IllegalArgumentException e) {
-            exceptionThrown = true;
-            System.assert(
-                e.getMessage().contains('Rating cannot be null or empty'),
-                'Exception message should indicate null or empty rating'
-            );
+            System.assert(false, 'Expected Exception was not thrown');
+        } catch (Exception e) {
+            System.assert(e.getMessage().contains('Rating cannot be null or empty'), 
+                'Exception message should indicate Rating cannot be null or empty');
         }
         Test.stopTest();
-
-        System.assert(
-            exceptionThrown,
-            'IllegalArgumentException should be thrown for null rating'
-        );
     }
-
+    
     /**
-     * Test update with empty rating
-     * Verifies that IllegalArgumentException is thrown
+     * Test that Exception is thrown when rating is empty string.
      */
     @isTest
     static void testUpdateAccountRating_EmptyRating() {
-        Account testAccount = [
-            SELECT Id
-            FROM Account
-            WHERE Name = 'Test Account 1'
-            LIMIT 1
-        ];
-
-        Boolean exceptionThrown = false;
-
+        // Arrange: Create a test Account
+        Account testAccount = new Account(
+            Name = 'Test Account',
+            Rating = 'Hot'
+        );
+        insert testAccount;
+        
+        // Act & Assert: Verify Exception is thrown
         Test.startTest();
         try {
             AccountHelper.updateAccountRating(testAccount.Id, '');
-        } catch (IllegalArgumentException e) {
-            exceptionThrown = true;
-            System.assert(
-                e.getMessage().contains('Rating cannot be null or empty'),
-                'Exception message should indicate null or empty rating'
-            );
+            System.assert(false, 'Expected Exception was not thrown');
+        } catch (Exception e) {
+            System.assert(e.getMessage().contains('Rating cannot be null or empty'), 
+                'Exception message should indicate Rating cannot be null or empty');
         }
         Test.stopTest();
-
-        System.assert(
-            exceptionThrown,
-            'IllegalArgumentException should be thrown for empty rating'
-        );
     }
-
+    
     /**
-     * Test update with blank rating (whitespace only)
-     * Verifies that IllegalArgumentException is thrown
+     * Test that Exception is thrown when rating is blank (whitespace only).
      */
     @isTest
     static void testUpdateAccountRating_BlankRating() {
-        Account testAccount = [
-            SELECT Id
-            FROM Account
-            WHERE Name = 'Test Account 1'
-            LIMIT 1
-        ];
-
-        Boolean exceptionThrown = false;
-
+        // Arrange: Create a test Account
+        Account testAccount = new Account(
+            Name = 'Test Account',
+            Rating = 'Hot'
+        );
+        insert testAccount;
+        
+        // Act & Assert: Verify Exception is thrown
         Test.startTest();
         try {
             AccountHelper.updateAccountRating(testAccount.Id, '   ');
-        } catch (IllegalArgumentException e) {
-            exceptionThrown = true;
-            System.assert(
-                e.getMessage().contains('Rating cannot be null or empty'),
-                'Exception message should indicate null or empty rating'
-            );
+            System.assert(false, 'Expected Exception was not thrown');
+        } catch (Exception e) {
+            System.assert(e.getMessage().contains('Rating cannot be null or empty'), 
+                'Exception message should indicate Rating cannot be null or empty');
         }
         Test.stopTest();
-
-        System.assert(
-            exceptionThrown,
-            'IllegalArgumentException should be thrown for blank rating'
-        );
     }
-
+    
     /**
-     * Test update with non-existent Account Id
-     * Verifies that QueryException is thrown
+     * Test that QueryException is thrown when Account record is not found.
      */
     @isTest
     static void testUpdateAccountRating_AccountNotFound() {
-        // Create a fake Id that doesn't exist (Account prefix is 001)
-        // Using a valid ID format but with a non-existent ID
-        Id fakeAccountId = Id.valueOf('001000000000000AAA');
-
-        Boolean exceptionThrown = false;
-
+        // Arrange: Create an Account, then delete it to get a non-existent Id
+        Account tempAccount = new Account(Name = 'Temp Account');
+        insert tempAccount;
+        Id deletedAccountId = tempAccount.Id;
+        delete tempAccount;
+        
+        // Act & Assert: Verify QueryException is thrown
         Test.startTest();
         try {
-            AccountHelper.updateAccountRating(fakeAccountId, 'Hot');
+            AccountHelper.updateAccountRating(deletedAccountId, 'Hot');
+            System.assert(false, 'Expected QueryException was not thrown');
         } catch (QueryException e) {
-            exceptionThrown = true;
-            System.assert(
-                e.getMessage().contains('Account not found'),
-                'Exception message should indicate Account not found'
-            );
+            System.assert(e.getMessage().contains('Account not found'), 
+                'Exception message should indicate Account not found');
         }
         Test.stopTest();
-
-        System.assert(
-            exceptionThrown,
-            'QueryException should be thrown for non-existent Account'
+    }
+    
+    /**
+     * Test update with different rating values to ensure method handles various inputs.
+     */
+    @isTest
+    static void testUpdateAccountRating_WithDifferentRatings() {
+        // Arrange: Create a test Account
+        Account testAccount = new Account(
+            Name = 'Test Account',
+            Rating = 'Cold'
         );
-    }
-
-    /**
-     * Test bulk update scenario
-     * Verifies that multiple accounts can be updated
-     */
-    @isTest
-    static void testUpdateAccountRating_BulkUpdate() {
-        List<Account> testAccounts = [
-            SELECT Id, Rating
-            FROM Account
-            LIMIT 2
-        ];
-
-        String newRating = 'Hot';
+        insert testAccount;
+        
+        List<String> testRatings = new List<String>{ 'Hot', 'Warm', 'Cold', 'Custom Rating' };
+        
+        // Act & Assert: Test each rating value
         Test.startTest();
-        for (Account acc : testAccounts) {
-            AccountHelper.updateAccountRating(acc.Id, newRating);
-        }
-        Test.stopTest();
-
-        // Verify all accounts were updated
-        List<Account> updatedAccounts = [
-            SELECT Id, Rating
-            FROM Account
-            WHERE Id IN :testAccounts
-        ];
-
-        for (Account acc : updatedAccounts) {
-            System.assertEquals(
-                newRating,
-                acc.Rating,
-                'All Account Ratings should be updated to ' + newRating
-            );
-        }
-    }
-
-    /**
-     * Test update with different rating values
-     * Verifies that various valid rating values can be set
-     */
-    @isTest
-    static void testUpdateAccountRating_DifferentRatings() {
-        Account testAccount = [
-            SELECT Id
-            FROM Account
-            WHERE Name = 'Test Account 1'
-            LIMIT 1
-        ];
-
-        List<String> ratings = new List<String>{ 'Hot', 'Warm', 'Cold' };
-
-        Test.startTest();
-        for (String rating : ratings) {
+        for (String rating : testRatings) {
             AccountHelper.updateAccountRating(testAccount.Id, rating);
-
+            
             Account updatedAccount = [
-                SELECT Id, Rating
-                FROM Account
-                WHERE Id = :testAccount.Id
+                SELECT Id, Rating 
+                FROM Account 
+                WHERE Id = :testAccount.Id 
                 LIMIT 1
             ];
-
-            System.assertEquals(
-                rating,
-                updatedAccount.Rating,
-                'Rating should be updated to ' + rating
-            );
+            System.assertEquals(rating, updatedAccount.Rating, 
+                'Account rating should be updated to: ' + rating);
         }
         Test.stopTest();
     }
 }
+

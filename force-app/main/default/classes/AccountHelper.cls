@@ -1,63 +1,44 @@
 /**
- * Helper class for Account-related operations
- * Provides utility methods for managing Account records
+ * Helper class for Account-related operations.
+ * Provides utility methods for common Account data manipulation tasks.
  */
 public class AccountHelper {
+    
     /**
-     * Updates the Rating field for a specific Account record
-     * @param accountId The Id of the Account to update
-     * @param rating The new rating value to set
-     * @throws IllegalArgumentException if accountId is null or rating is null/empty
+     * Updates the Rating field for a single Account record.
+     * 
+     * @param accountId The Id of the Account record to update
+     * @param rating The new rating value to assign to the Account
+     * @throws NullPointerException if accountId is null
+     * @throws Exception if rating is null or empty
      * @throws QueryException if the Account record is not found
      * @throws DmlException if the update operation fails
      */
     public static void updateAccountRating(Id accountId, String rating) {
-        // Input validation
+        // Validate input parameters
         if (accountId == null) {
-            throw new IllegalArgumentException('Account Id cannot be null');
+            throw new NullPointerException('Account Id cannot be null');
         }
         if (String.isBlank(rating)) {
-            throw new IllegalArgumentException('Rating cannot be null or empty');
+            throw new Exception('Rating cannot be null or empty');
         }
-
+        
         try {
             // Query the Account record
-            List<Account> accounts = [
-                SELECT Id, Rating
-                FROM Account
-                WHERE Id = :accountId
+            Account account = [
+                SELECT Id, Rating 
+                FROM Account 
+                WHERE Id = :accountId 
                 LIMIT 1
             ];
-
-            if (accounts.isEmpty()) {
-                throw new QueryException('Account not found with Id: ' + accountId);
-            }
-
-            Account accountToUpdate = accounts[0];
-            accountToUpdate.Rating = rating;
-
-            // Update the Account record
-            update accountToUpdate;
-        } catch (DmlException e) {
-            System.debug(
-                LoggingLevel.ERROR,
-                'Error updating Account Rating: ' + e.getMessage()
-            );
-            throw new DmlException(
-                'Failed to update Account Rating: ' + e.getMessage()
-            );
+            
+            // Update the rating
+            account.Rating = rating;
+            update account;
         } catch (QueryException e) {
-            System.debug(
-                LoggingLevel.ERROR,
-                'Error querying Account: ' + e.getMessage()
-            );
-            throw e;
-        } catch (Exception e) {
-            System.debug(
-                LoggingLevel.ERROR,
-                'Unexpected error in updateAccountRating: ' + e.getMessage()
-            );
-            throw e;
+            throw new QueryException('Account not found with Id: ' + accountId, e);
+        } catch (DmlException e) {
+            throw new DmlException('Failed to update Account rating: ' + e.getMessage(), e);
         }
     }
 }
