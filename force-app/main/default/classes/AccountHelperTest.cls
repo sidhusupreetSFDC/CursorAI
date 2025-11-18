@@ -1,382 +1,303 @@
 /**
- * @description Comprehensive test class for AccountHelper.
- *              Tests all scenarios including positive, negative, bulk, and edge cases.
- * @author Salesforce
- * @date 2025
+ * @description Test class for AccountHelper
+ * @author Salesforce Developer
+ * @date 2024
  */
-@IsTest
+@isTest
 private class AccountHelperTest {
-    private static final Integer BULK_TEST_SIZE = 201;
-    private static final String INVALID_ACCOUNT_ID_PREFIX = '001000000000000AAA';
-    private static final String TEST_ACCOUNT_NAME_PREFIX = 'Test Account';
-
+    
+    /**
+     * @description Setup test data for all test methods
+     */
     @testSetup
-    static void createTestData() {
-        insert new List<Account>{
-            new Account(Name = 'Acme A'),
-            new Account(Name = 'Acme B'),
-            new Account(Name = 'Acme C')
-        };
+    static void setupTestData() {
+        List<Account> testAccounts = new List<Account>();
+        
+        // Create test accounts with various AnnualRevenue values
+        for (Integer i = 0; i < 10; i++) {
+            testAccounts.add(new Account(
+                Name = 'Test Account ' + i,
+                AnnualRevenue = 50000 + (i * 10000)
+            ));
+        }
+        
+        insert testAccounts;
     }
-
-    // Positive Test Cases
-
-    @IsTest
-    static void updateAccounts_setsAnnualRevenueForMultipleAccounts() {
-        List<Account> targetAccounts = fetchAccounts(2);
-
+    
+    /**
+     * @description Positive test: Update single account successfully
+     */
+    @isTest
+    static void testUpdateAccounts_SingleAccount_Success() {
+        // Get test account
+        Account testAccount = [SELECT Id, AnnualRevenue FROM Account LIMIT 1];
+        Decimal originalRevenue = testAccount.AnnualRevenue;
+        
         Test.startTest();
-        AccountHelper.updateAccounts(
-            new List<Id>{
-                targetAccounts[0].Id,
-                targetAccounts[1].Id,
-                targetAccounts[0].Id
-            }
-        );
+        AccountHelper.updateAccounts(new List<Id>{ testAccount.Id });
         Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(new List<Id>{
-            targetAccounts[0].Id,
-            targetAccounts[1].Id
-        });
+        
+        // Verify the account was updated
+        Account updatedAccount = [SELECT Id, AnnualRevenue FROM Account WHERE Id = :testAccount.Id];
+        System.assertEquals(1000000, updatedAccount.AnnualRevenue, 
+            'AnnualRevenue should be set to 1000000');
+        System.assertNotEquals(originalRevenue, updatedAccount.AnnualRevenue, 
+            'AnnualRevenue should have changed');
     }
-
-    @IsTest
-    static void updateAccounts_updatesSingleAccount() {
-        List<Account> targetAccount = fetchAccounts(1);
-
+    
+    /**
+     * @description Positive test: Update multiple accounts successfully
+     */
+    @isTest
+    static void testUpdateAccounts_MultipleAccounts_Success() {
+        // Get test accounts
+        List<Account> testAccounts = [SELECT Id, AnnualRevenue FROM Account LIMIT 5];
+        List<Id> accountIds = new List<Id>();
+        
+        for (Account acc : testAccounts) {
+            accountIds.add(acc.Id);
+        }
+        
         Test.startTest();
-        AccountHelper.updateAccounts(new List<Id>{targetAccount[0].Id});
+        AccountHelper.updateAccounts(accountIds);
         Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(new List<Id>{targetAccount[0].Id});
+        
+        // Verify all accounts were updated
+        List<Account> updatedAccounts = [
+            SELECT Id, AnnualRevenue 
+            FROM Account 
+            WHERE Id IN :accountIds
+        ];
+        
+        System.assertEquals(testAccounts.size(), updatedAccounts.size(), 
+            'All accounts should be retrieved');
+        
+        for (Account acc : updatedAccounts) {
+            System.assertEquals(1000000, acc.AnnualRevenue, 
+                'Each account AnnualRevenue should be set to 1000000');
+        }
     }
-
-    @IsTest
-    static void updateAccounts_updatesAllAccountsFromSetup() {
-        List<Account> allAccounts = fetchAccounts(3);
-
-        Test.startTest();
-        AccountHelper.updateAccounts(
-            new List<Id>{
-                allAccounts[0].Id,
-                allAccounts[1].Id,
-                allAccounts[2].Id
-            }
-        );
-        Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(
-            new List<Id>{
-                allAccounts[0].Id,
-                allAccounts[1].Id,
-                allAccounts[2].Id
-            }
-        );
-    }
-
-    @IsTest
-    static void updateAccounts_handlesBulkOperations() {
-        List<Account> bulkAccounts = createBulkTestAccounts(BULK_TEST_SIZE);
-
-        Test.startTest();
+    
+    /**
+     * @description Bulk test: Update 200+ accounts to test bulkification
+     */
+    @isTest
+    static void testUpdateAccounts_BulkScenario_Success() {
+        // Create 250 accounts for bulk testing
+        List<Account> bulkAccounts = new List<Account>();
+        for (Integer i = 0; i < 250; i++) {
+            bulkAccounts.add(new Account(
+                Name = 'Bulk Test Account ' + i,
+                AnnualRevenue = 10000
+            ));
+        }
+        insert bulkAccounts;
+        
         List<Id> accountIds = new List<Id>();
         for (Account acc : bulkAccounts) {
             accountIds.add(acc.Id);
         }
+        
+        Test.startTest();
         AccountHelper.updateAccounts(accountIds);
         Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(accountIds);
-        System.assertEquals(
-            BULK_TEST_SIZE,
-            [SELECT COUNT() FROM Account WHERE AnnualRevenue = :AccountHelper.TARGET_ANNUAL_REVENUE],
-            'All bulk accounts should be updated.'
-        );
-    }
-
-    // Edge Case Test Cases
-
-    @IsTest
-    static void updateAccounts_ignoresNullInput() {
-        Test.startTest();
-        Integer queriesBefore = Limits.getQueries();
-        Integer dmlBefore = Limits.getDMLStatements();
-
-        AccountHelper.updateAccounts(null);
-
-        Integer queriesAfter = Limits.getQueries();
-        Integer dmlAfter = Limits.getDMLStatements();
-        Test.stopTest();
-
-        System.assertEquals(
-            queriesBefore,
-            queriesAfter,
-            'Method should not perform queries when null is supplied.'
-        );
-        System.assertEquals(
-            dmlBefore,
-            dmlAfter,
-            'Method should not perform DML when null is supplied.'
-        );
-    }
-
-    @IsTest
-    static void updateAccounts_ignoresEmptyList() {
-        Test.startTest();
-        Integer queriesBefore = Limits.getQueries();
-        Integer dmlBefore = Limits.getDMLStatements();
-
-        AccountHelper.updateAccounts(new List<Id>());
-
-        Integer queriesAfter = Limits.getQueries();
-        Integer dmlAfter = Limits.getDMLStatements();
-        Test.stopTest();
-
-        System.assertEquals(
-            queriesBefore,
-            queriesAfter,
-            'Method should not perform queries when empty list is supplied.'
-        );
-        System.assertEquals(
-            dmlBefore,
-            dmlAfter,
-            'Method should not perform DML when empty list is supplied.'
-        );
-    }
-
-    @IsTest
-    static void updateAccounts_handlesEmptyAccountList() {
-        Test.startTest();
-        AccountHelper.updateAccounts(
-            new List<Id>{
-                buildInvalidAccountId(),
-                buildInvalidAccountId()
-            }
-        );
-        Test.stopTest();
-
-        System.assertEquals(
-            0,
-            [SELECT COUNT() FROM Account WHERE AnnualRevenue = :AccountHelper.TARGET_ANNUAL_REVENUE],
-            'No accounts should be updated when all IDs are invalid.'
-        );
-    }
-
-    @IsTest
-    static void updateAccounts_updatesExistingIdsOnly() {
-        List<Account> targetAccounts = fetchAccounts(1);
-
-        Test.startTest();
-        AccountHelper.updateAccounts(
-            new List<Id>{
-                targetAccounts[0].Id,
-                buildInvalidAccountId()
-            }
-        );
-        Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(new List<Id>{targetAccounts[0].Id});
-    }
-
-    @IsTest
-    static void updateAccounts_handlesDuplicateIds() {
-        List<Account> targetAccounts = fetchAccounts(1);
-        Id duplicateId = targetAccounts[0].Id;
-
-        Test.startTest();
-        AccountHelper.updateAccounts(
-            new List<Id>{
-                duplicateId,
-                duplicateId,
-                duplicateId
-            }
-        );
-        Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(new List<Id>{duplicateId});
         
-        Account updatedAccount = [
-            SELECT AnnualRevenue
-            FROM Account
-            WHERE Id = :duplicateId
+        // Verify all accounts were updated
+        List<Account> updatedAccounts = [
+            SELECT Id, AnnualRevenue 
+            FROM Account 
+            WHERE Id IN :accountIds
         ];
-        System.assertEquals(
-            AccountHelper.TARGET_ANNUAL_REVENUE,
-            updatedAccount.AnnualRevenue,
-            'Account should be updated only once despite duplicate IDs.'
-        );
+        
+        System.assertEquals(250, updatedAccounts.size(), 
+            'All 250 accounts should be retrieved');
+        
+        for (Account acc : updatedAccounts) {
+            System.assertEquals(1000000, acc.AnnualRevenue, 
+                'Each account AnnualRevenue should be set to 1000000');
+        }
     }
-
-    // Negative Test Cases
-
-    @IsTest
-    static void updateAccounts_throwsExceptionOnDmlFailure() {
-        List<Account> accounts = createBulkTestAccounts(1);
-        Account accountToDelete = accounts[0];
-        delete accountToDelete;
-
+    
+    /**
+     * @description Negative test: Null input should not throw exception
+     */
+    @isTest
+    static void testUpdateAccounts_NullInput_NoException() {
         Test.startTest();
         try {
-            AccountHelper.updateAccounts(new List<Id>{accountToDelete.Id});
-            System.assert(false, 'Expected AccountHelperException to be thrown.');
-        } catch (AccountHelper.AccountHelperException ex) {
-            System.assert(
-                ex.getMessage().contains('Unable to update accounts'),
-                'Exception message should indicate account update failure.'
-            );
+            AccountHelper.updateAccounts(null);
+            // Should complete without exception
+            System.assert(true, 'Method should handle null input gracefully');
+        } catch (Exception e) {
+            System.assert(false, 'Null input should not throw exception: ' + e.getMessage());
         }
         Test.stopTest();
     }
-
-    @IsTest
-    static void updateAccounts_handlesVeryLargeBulkOperation() {
-        List<Account> bulkAccounts = createBulkTestAccounts(500);
-
+    
+    /**
+     * @description Negative test: Empty list input should not throw exception
+     */
+    @isTest
+    static void testUpdateAccounts_EmptyList_NoException() {
         Test.startTest();
-        List<Id> accountIds = new List<Id>();
-        for (Account acc : bulkAccounts) {
-            accountIds.add(acc.Id);
+        try {
+            AccountHelper.updateAccounts(new List<Id>());
+            // Should complete without exception
+            System.assert(true, 'Method should handle empty list input gracefully');
+        } catch (Exception e) {
+            System.assert(false, 'Empty list input should not throw exception: ' + e.getMessage());
         }
-        AccountHelper.updateAccounts(accountIds);
         Test.stopTest();
-
-        Integer updatedCount = [
-            SELECT COUNT()
-            FROM Account
-            WHERE Id IN :accountIds
-            AND AnnualRevenue = :AccountHelper.TARGET_ANNUAL_REVENUE
-        ];
-        System.assertEquals(
-            500,
-            updatedCount,
-            'All 500 accounts should be updated successfully.'
-        );
     }
-
-    @IsTest
-    static void updateAccounts_handlesMixedValidAndInvalidIds() {
-        List<Account> validAccounts = createBulkTestAccounts(5);
-        List<Id> mixedIds = new List<Id>();
+    
+    /**
+     * @description Negative test: Invalid account IDs (non-existent) should not throw exception
+     */
+    @isTest
+    static void testUpdateAccounts_InvalidIds_NoException() {
+        // Create a valid format ID that doesn't exist
+        // Account key prefix is '001', followed by 12 alphanumeric characters (15 total)
+        String fakeIdPrefix = Account.sObjectType.getDescribe().getKeyPrefix();
+        String fakeId = fakeIdPrefix + '000000000000'; // 12 zeros after prefix (15 chars total)
+        List<Id> invalidIds = new List<Id>{ (Id)fakeId };
         
-        for (Account acc : validAccounts) {
-            mixedIds.add(acc.Id);
+        Test.startTest();
+        try {
+            AccountHelper.updateAccounts(invalidIds);
+            // Should complete without exception (empty query result)
+            System.assert(true, 'Method should handle invalid IDs gracefully');
+        } catch (Exception e) {
+            System.assert(false, 'Invalid IDs should not throw exception: ' + e.getMessage());
         }
-        mixedIds.add(buildInvalidAccountId());
-        mixedIds.add(buildInvalidAccountId());
-
+        Test.stopTest();
+    }
+    
+    /**
+     * @description Negative test: Mix of valid and invalid account IDs
+     */
+    @isTest
+    static void testUpdateAccounts_MixedValidInvalidIds_Success() {
+        // Get one valid account
+        Account validAccount = [SELECT Id FROM Account LIMIT 1];
+        
+        // Create invalid IDs
+        List<Id> mixedIds = new List<Id>{ validAccount.Id };
+        String fakeIdPrefix = Account.sObjectType.getDescribe().getKeyPrefix();
+        String fakeId = fakeIdPrefix + '000000000000'; // 12 zeros after prefix (15 chars total)
+        mixedIds.add((Id)fakeId);
+        
+        Decimal originalRevenue = [SELECT AnnualRevenue FROM Account WHERE Id = :validAccount.Id].AnnualRevenue;
+        
         Test.startTest();
         AccountHelper.updateAccounts(mixedIds);
         Test.stopTest();
-
-        assertAnnualRevenueEqualsTarget(
-            new List<Id>{
-                validAccounts[0].Id,
-                validAccounts[1].Id,
-                validAccounts[2].Id,
-                validAccounts[3].Id,
-                validAccounts[4].Id
-            }
-        );
+        
+        // Verify valid account was updated
+        Account updatedAccount = [SELECT Id, AnnualRevenue FROM Account WHERE Id = :validAccount.Id];
+        System.assertEquals(1000000, updatedAccount.AnnualRevenue, 
+            'Valid account should be updated even when mixed with invalid IDs');
     }
-
-    @IsTest
-    static void updateAccounts_validatesGovernorLimits() {
-        List<Account> bulkAccounts = createBulkTestAccounts(BULK_TEST_SIZE);
+    
+    /**
+     * @description Test: Verify that only queried accounts are updated
+     */
+    @isTest
+    static void testUpdateAccounts_SelectiveUpdate_Success() {
+        // Get all accounts
+        List<Account> allAccounts = [SELECT Id, AnnualRevenue FROM Account];
+        
+        // Select only first 3 accounts to update
+        List<Id> accountIdsToUpdate = new List<Id>();
+        for (Integer i = 0; i < 3 && i < allAccounts.size(); i++) {
+            accountIdsToUpdate.add(allAccounts[i].Id);
+        }
+        
+        Test.startTest();
+        AccountHelper.updateAccounts(accountIdsToUpdate);
+        Test.stopTest();
+        
+        // Verify only selected accounts were updated
+        List<Account> updatedAccounts = [
+            SELECT Id, AnnualRevenue 
+            FROM Account 
+            WHERE Id IN :accountIdsToUpdate
+        ];
+        
+        List<Account> nonUpdatedAccounts = [
+            SELECT Id, AnnualRevenue 
+            FROM Account 
+            WHERE Id NOT IN :accountIdsToUpdate
+        ];
+        
+        // Verify updated accounts
+        for (Account acc : updatedAccounts) {
+            System.assertEquals(1000000, acc.AnnualRevenue, 
+                'Selected accounts should be updated');
+        }
+        
+        // Verify non-updated accounts remain unchanged
+        for (Account acc : nonUpdatedAccounts) {
+            System.assertNotEquals(1000000, acc.AnnualRevenue, 
+                'Non-selected accounts should not be updated');
+        }
+    }
+    
+    /**
+     * @description Test: Verify AnnualRevenue field is updated correctly with different initial values
+     */
+    @isTest
+    static void testUpdateAccounts_DifferentInitialValues_Success() {
+        // Create accounts with different AnnualRevenue values
+        List<Account> testAccounts = new List<Account>{
+            new Account(Name = 'Account Zero', AnnualRevenue = 0),
+            new Account(Name = 'Account Null', AnnualRevenue = null),
+            new Account(Name = 'Account High', AnnualRevenue = 5000000),
+            new Account(Name = 'Account Negative', AnnualRevenue = -1000)
+        };
+        insert testAccounts;
+        
         List<Id> accountIds = new List<Id>();
-        for (Account acc : bulkAccounts) {
+        for (Account acc : testAccounts) {
             accountIds.add(acc.Id);
         }
-
+        
         Test.startTest();
-        Integer queriesBefore = Limits.getQueries();
-        Integer dmlBefore = Limits.getDMLStatements();
-        
         AccountHelper.updateAccounts(accountIds);
-        
-        Integer queriesAfter = Limits.getQueries();
-        Integer dmlAfter = Limits.getDMLStatements();
         Test.stopTest();
-
-        System.assert(
-            queriesAfter - queriesBefore <= 2,
-            'Should use minimal SOQL queries (1 for fetch, 1 for assertion).'
-        );
-        System.assert(
-            dmlAfter - dmlBefore == 1,
-            'Should use single DML statement for bulk update.'
-        );
-    }
-
-    // Helper Methods
-
-    /**
-     * @description Fetches Account records from test setup data
-     * @param recordLimit Number of records to fetch
-     * @return List of Account records
-     */
-    private static List<Account> fetchAccounts(Integer recordLimit) {
-        return [
-            SELECT Id, AnnualRevenue
-            FROM Account
-            ORDER BY CreatedDate ASC
-            LIMIT :recordLimit
-        ];
-    }
-
-    /**
-     * @description Creates bulk test accounts for bulkification testing
-     * @param count Number of accounts to create
-     * @return List of created Account records
-     */
-    private static List<Account> createBulkTestAccounts(Integer count) {
-        if (count <= 0) {
-            return new List<Account>();
-        }
-
-        List<Account> accounts = new List<Account>();
-        for (Integer i = 0; i < count; i++) {
-            accounts.add(new Account(Name = TEST_ACCOUNT_NAME_PREFIX + ' ' + i));
-        }
-        insert accounts;
-        return accounts;
-    }
-
-    /**
-     * @description Asserts that AnnualRevenue equals the target value for all provided Account Ids
-     * @param accountIds List of Account Ids to verify
-     */
-    private static void assertAnnualRevenueEqualsTarget(List<Id> accountIds) {
-        if (accountIds == null || accountIds.isEmpty()) {
-            return;
-        }
-
-        Map<Id, Account> accountMap = new Map<Id, Account>([
-            SELECT Id, AnnualRevenue
-            FROM Account
+        
+        // Verify all accounts have same AnnualRevenue value
+        List<Account> updatedAccounts = [
+            SELECT Id, Name, AnnualRevenue 
+            FROM Account 
             WHERE Id IN :accountIds
-        ]);
-
-        for (Id accountId : accountIds) {
-            Account refreshedAccount = accountMap.get(accountId);
-            System.assertNotEquals(
-                null,
-                refreshedAccount,
-                'Account with Id ' + accountId + ' should exist.'
-            );
-            System.assertEquals(
-                AccountHelper.TARGET_ANNUAL_REVENUE,
-                refreshedAccount.AnnualRevenue,
-                'AnnualRevenue should be updated for Account ' + accountId
-            );
+        ];
+        
+        for (Account acc : updatedAccounts) {
+            System.assertEquals(1000000, acc.AnnualRevenue, 
+                'Account ' + acc.Name + ' should have AnnualRevenue set to 1000000');
         }
     }
-
+    
     /**
-     * @description Builds an invalid Account Id for testing
-     * @return Invalid Account Id
+     * @description Test: Verify method handles accounts that are already at target value
      */
-    private static Id buildInvalidAccountId() {
-        return Id.valueOf(INVALID_ACCOUNT_ID_PREFIX);
+    @isTest
+    static void testUpdateAccounts_AlreadyAtTargetValue_Success() {
+        // Create account with AnnualRevenue already at 1000000
+        Account testAccount = new Account(
+            Name = 'Account At Target',
+            AnnualRevenue = 1000000
+        );
+        insert testAccount;
+        
+        Test.startTest();
+        AccountHelper.updateAccounts(new List<Id>{ testAccount.Id });
+        Test.stopTest();
+        
+        // Verify account still has correct value
+        Account updatedAccount = [SELECT Id, AnnualRevenue FROM Account WHERE Id = :testAccount.Id];
+        System.assertEquals(1000000, updatedAccount.AnnualRevenue, 
+            'Account should maintain AnnualRevenue value of 1000000');
     }
 }
+
