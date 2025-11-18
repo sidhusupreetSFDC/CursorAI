@@ -1,5 +1,5 @@
 /**
- * Test Data Factory for creating reusable test data
+ * @description Test Data Factory for creating reusable test data
  * Follows Test Factory pattern for consistent test data creation
  * 
  * @author Salesforce Developer
@@ -9,7 +9,7 @@
 public class TestDataFactory {
     
     /**
-     * Creates a single Account record for testing
+     * @description Creates a single Account record for testing
      * @param name Account name
      * @param annualRevenue Annual revenue value (optional)
      * @return Account record (not inserted)
@@ -24,7 +24,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates a single Account record with default values
+     * @description Creates a single Account record with default values
      * @param name Account name
      * @return Account record (not inserted)
      */
@@ -33,7 +33,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates multiple Account records for bulk testing
+     * @description Creates multiple Account records for bulk testing
      * @param count Number of accounts to create
      * @param namePrefix Prefix for account names
      * @param annualRevenue Annual revenue value (optional)
@@ -48,7 +48,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates multiple Account records with default values
+     * @description Creates multiple Account records with default values
      * @param count Number of accounts to create
      * @param namePrefix Prefix for account names
      * @return List of Account records (not inserted)
@@ -58,7 +58,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates a single Opportunity record for testing
+     * @description Creates a single Opportunity record for testing
      * @param accountId Related Account ID
      * @param name Opportunity name
      * @param stageName Stage name (default: Prospecting)
@@ -77,7 +77,18 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates a single Opportunity record with default values
+     * @description Creates a single Opportunity record with account, name, and stage
+     * @param accountId Related Account ID
+     * @param name Opportunity name
+     * @param stageName Stage name
+     * @return Opportunity record (not inserted)
+     */
+    public static Opportunity createOpportunity(Id accountId, String name, String stageName) {
+        return createOpportunity(accountId, name, stageName, null, null);
+    }
+    
+    /**
+     * @description Creates a single Opportunity record with default values
      * @param accountId Related Account ID
      * @param name Opportunity name
      * @return Opportunity record (not inserted)
@@ -87,7 +98,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates multiple Opportunity records for bulk testing
+     * @description Creates multiple Opportunity records for bulk testing
      * @param accountId Related Account ID
      * @param count Number of opportunities to create
      * @param namePrefix Prefix for opportunity names
@@ -103,7 +114,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates multiple Opportunity records with default values
+     * @description Creates multiple Opportunity records with default values
      * @param accountId Related Account ID
      * @param count Number of opportunities to create
      * @param namePrefix Prefix for opportunity names
@@ -114,7 +125,7 @@ public class TestDataFactory {
     }
     
     /**
-     * Creates old Account records for testing deleteOldAccounts method
+     * @description Creates old Account records for testing deleteOldAccounts method
      * @param count Number of accounts to create
      * @param daysOld Number of days old (default: 400)
      * @return List of Account records (inserted)

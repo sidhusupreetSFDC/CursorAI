@@ -24,7 +24,7 @@ public class AccountTriggerHandler {
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'AccountTriggerHandler.handle - Error: ' + e.getMessage());
             System.debug(LoggingLevel.ERROR, 'Stack trace: ' + e.getStackTraceString());
-            throw new AccountServiceException('Error in AccountTriggerHandler: ' + e.getMessage(), e);
+            throw new AccountServiceException('Error in AccountTriggerHandler: ' + e.getMessage());
         }
     }
     
