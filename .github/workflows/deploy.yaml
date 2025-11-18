@@ -1,0 +1,59 @@
+name: Salesforce CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install --global @salesforce/cli
+          sf --version
+
+      - name: Authenticate with target org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "SFDX_AUTH_URL secret not set." >&2
+            exit 1
+          fi
+          echo "$SFDX_AUTH_URL" > sfdx_auth_url.txt
+          sf org login sfdx-url --sfdx-url-file sfdx_auth_url.txt --alias ci --set-default
+          rm sfdx_auth_url.txt
+
+      - name: Validate deployment (RunLocalTests)
+        run: |
+          bash -o pipefail -c "sf project deploy start \
+            --manifest manifest/package.xml \
+            --test-level RunLocalTests \
+            --dry-run \
+            --json | tee validation-report.json"
+
+      - name: Deploy to production
+        run: |
+          bash -o pipefail -c "sf project deploy start \
+            --manifest manifest/package.xml \
+            --test-level RunLocalTests \
+            --json | tee deployment-report.json"
+
+      - name: Upload deployment reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: |
+            validation-report.json
+            deployment-report.json
