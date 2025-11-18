@@ -42,6 +42,7 @@ jobs:
             sfca_results.json
             sfca_results.html
           retention-days: 30
+          overwrite: true
 
   validate:
     name: Validate Deployment
