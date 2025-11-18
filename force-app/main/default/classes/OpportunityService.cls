@@ -1,17 +1,17 @@
 /**
- * Service class for Opportunity business logic
+ * @description Service class for Opportunity business logic
  * Implements Service Layer pattern with bulkification and error handling
  * 
  * @author Salesforce Developer
  * @date 2024
  */
-public class OpportunityService {
+public with sharing class OpportunityService {
     
     private static final String STAGE_CLOSED_WON = 'Closed Won';
     private static final Integer MAX_RECORDS_PER_BATCH = 10000;
     
     /**
-     * Closes opportunities by setting stage to Closed Won
+     * @description Closes opportunities by setting stage to Closed Won
      * Bulkified to handle 200+ records efficiently
      * @param oppIds List of Opportunity IDs to close
      * @return Database.SaveResult[] Results of the update operation
@@ -73,7 +73,7 @@ public class OpportunityService {
     }
     
     /**
-     * Handles DML operation results and logs errors
+     * @description Handles DML operation results and logs errors
      * @param results Database operation results
      * @param context Context string for logging
      * @return Integer Number of successful operations

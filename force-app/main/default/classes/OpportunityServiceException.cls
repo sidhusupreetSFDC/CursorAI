@@ -1,12 +1,12 @@
 /**
- * Custom exception class for OpportunityService domain-specific errors
+ * @description Custom exception class for OpportunityService domain-specific errors
  * @author Salesforce Developer
  * @date 2024
  */
 public class OpportunityServiceException extends Exception {
     
     /**
-     * Constructor with message
+     * @description Constructor with message
      * @param message Error message
      */
     public OpportunityServiceException(String message) {
@@ -14,7 +14,7 @@ public class OpportunityServiceException extends Exception {
     }
     
     /**
-     * Constructor with message and cause
+     * @description Constructor with message and cause
      * @param message Error message
      * @param cause Underlying exception
      */

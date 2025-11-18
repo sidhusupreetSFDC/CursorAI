@@ -1,18 +1,18 @@
 /**
- * Service class for Account business logic
+ * @description Service class for Account business logic
  * Implements Service Layer pattern with bulkification and error handling
  * 
  * @author Salesforce Developer
  * @date 2024
  */
-public class AccountService {
+public with sharing class AccountService {
     
     private static final Decimal DEFAULT_ANNUAL_REVENUE = 0;
     private static final String FOLLOW_UP_TASK_SUBJECT = 'Follow up on new account';
     private static final Integer MAX_RECORDS_PER_BATCH = 10000;
     
     /**
-     * Sets default AnnualRevenue for accounts where it is null
+     * @description Sets default AnnualRevenue for accounts where it is null
      * Called from trigger handler before insert
      * @param accounts List of Account records to process
      */
@@ -36,7 +36,7 @@ public class AccountService {
     }
     
     /**
-     * Creates follow-up tasks for newly inserted accounts
+     * @description Creates follow-up tasks for newly inserted accounts
      * Called from trigger handler after insert
      * @param accounts List of newly inserted Account records
      */
@@ -68,7 +68,7 @@ public class AccountService {
     }
     
     /**
-     * Creates accounts in bulk with error handling
+     * @description Creates accounts in bulk with error handling
      * @param accounts List of Account records to create
      * @return Database.SaveResult[] Results of the insert operation
      */
@@ -106,7 +106,7 @@ public class AccountService {
     }
     
     /**
-     * Updates account revenue in bulk
+     * @description Updates account revenue in bulk
      * @param accountIds List of Account IDs to update
      * @param newRevenue New revenue value to set
      * @return Database.SaveResult[] Results of the update operation
@@ -162,7 +162,7 @@ public class AccountService {
     }
     
     /**
-     * Deletes old accounts created more than specified days ago
+     * @description Deletes old accounts created more than specified days ago
      * Uses SOQL FOR loop for large datasets
      * @param daysOld Number of days old (default 365)
      * @return Integer Number of accounts deleted
@@ -182,7 +182,7 @@ public class AccountService {
         Integer deletedCount = 0;
         List<Account> accountsToDelete = new List<Account>();
         
-        // Use SOQL FOR loop for large datasets
+        // Collect accounts to delete using SOQL FOR loop for large datasets
         for (Account acc : [
             SELECT Id 
             FROM Account 
@@ -191,19 +191,24 @@ public class AccountService {
             LIMIT :MAX_RECORDS_PER_BATCH
         ]) {
             accountsToDelete.add(acc);
-            
-            // Process in batches to avoid governor limits
-            if (accountsToDelete.size() == 200) {
-                Database.DeleteResult[] results = Database.delete(accountsToDelete, false);
-                deletedCount += handleDmlResults(results, 'AccountService.deleteOldAccounts');
-                accountsToDelete.clear();
-            }
         }
         
-        // Delete remaining records
+        // Delete in batches outside the loop to avoid OperationWithLimitsInLoop
         if (!accountsToDelete.isEmpty()) {
-            Database.DeleteResult[] results = Database.delete(accountsToDelete, false);
-            deletedCount += handleDmlResults(results, 'AccountService.deleteOldAccounts');
+            Integer batchSize = 200;
+            Integer totalRecords = accountsToDelete.size();
+            
+            for (Integer i = 0; i < totalRecords; i += batchSize) {
+                Integer endIndex = Math.min(i + batchSize, totalRecords);
+                List<Account> batch = new List<Account>();
+                
+                for (Integer j = i; j < endIndex; j++) {
+                    batch.add(accountsToDelete[j]);
+                }
+                
+                Database.DeleteResult[] results = Database.delete(batch, false);
+                deletedCount += handleDmlResults(results, 'AccountService.deleteOldAccounts');
+            }
         }
         
         System.debug(LoggingLevel.DEBUG, 'AccountService.deleteOldAccounts - Deleted ' + deletedCount + ' accounts');
@@ -211,7 +216,7 @@ public class AccountService {
     }
     
     /**
-     * Handles DML operation results and logs errors
+     * @description Handles DML operation results and logs errors
      * @param results Database operation results
      * @param context Context string for logging
      * @return Integer Number of successful operations
@@ -241,7 +246,7 @@ public class AccountService {
     }
     
     /**
-     * Handles delete operation results and logs errors
+     * @description Handles delete operation results and logs errors
      * @param results Database delete results
      * @param context Context string for logging
      * @return Integer Number of successful operations

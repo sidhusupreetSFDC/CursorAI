@@ -1,5 +1,5 @@
 /**
- * Test class for AccountTriggerHandler
+ * @description Test class for AccountTriggerHandler
  * Tests trigger handler by executing DML operations that fire the trigger
  * 
  * @author Salesforce Developer
@@ -9,17 +9,18 @@
 private class AccountTriggerHandlerTest {
     
     /**
-     * Test setup method - creates shared test data
+     * @description Test setup method - creates shared test data
      */
     @testSetup
     static void setupTestData() {
         // No setup needed - tests will create their own data
+        // Empty method is intentional for test structure
     }
     
     // ========== Before Insert Tests ==========
     
     @isTest
-    static void testBeforeInsert_SetDefaultRevenue() {
+    static void testBeforeInsertSetDefaultRevenue() {
         // Positive test: Before insert should set default revenue for null values
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Before Insert Test');
         // Ensure AnnualRevenue is null
@@ -45,7 +46,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testBeforeInsert_PreserveExistingRevenue() {
+    static void testBeforeInsertPreserveExistingRevenue() {
         // Positive test: Should preserve existing revenue values
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Preserve Revenue Test', 5000);
         
@@ -67,7 +68,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testBeforeInsert_Bulk() {
+    static void testBeforeInsertBulk() {
         // Bulk test: Process 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Before Insert');
         // Ensure AnnualRevenue is null
@@ -94,7 +95,7 @@ private class AccountTriggerHandlerTest {
     // ========== After Insert Tests ==========
     
     @isTest
-    static void testAfterInsert_CreateFollowUpTasks() {
+    static void testAfterInsertCreateFollowUpTasks() {
         // Positive test: After insert should create follow-up tasks
         List<Account> accounts = TestDataFactory.createAccounts(3, 'After Insert Test');
         
@@ -118,7 +119,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testAfterInsert_Bulk() {
+    static void testAfterInsertBulk() {
         // Bulk test: Create tasks for 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk After Insert');
         
@@ -138,7 +139,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testAfterInsert_MixedRevenueValues() {
+    static void testAfterInsertMixedRevenueValues() {
         // Edge case: Mix of null and existing revenue values
         List<Account> accounts = new List<Account>();
         
@@ -175,7 +176,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testTriggerHandler_ErrorHandling() {
+    static void testTriggerHandlerErrorHandling() {
         // Negative test: Verify error handling in handler
         // This test verifies that exceptions are properly caught and re-thrown
         // We'll test by creating an account that might cause issues
@@ -197,7 +198,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testTriggerHandler_CompleteFlow() {
+    static void testTriggerHandlerCompleteFlow() {
         // Integration test: Test complete flow - before insert and after insert together
         List<Account> accounts = TestDataFactory.createAccounts(5, 'Complete Flow Test');
         // Set some with null revenue, some with existing revenue

@@ -1,5 +1,5 @@
 /**
- * Test class for OpportunityService
+ * @description Test class for OpportunityService
  * Tests all methods with positive, negative, bulk, and edge cases
  * 
  * @author Salesforce Developer
@@ -9,7 +9,7 @@
 private class OpportunityServiceTest {
     
     /**
-     * Test setup method - creates shared test data
+     * @description Test setup method - creates shared test data
      */
     @testSetup
     static void setupTestData() {
@@ -29,7 +29,7 @@ private class OpportunityServiceTest {
     // ========== closeOpportunities Tests ==========
     
     @isTest
-    static void testCloseOpportunities_Success() {
+    static void testCloseOpportunitiesSuccess() {
         // Positive test: Close opportunities successfully
         List<Opportunity> opportunities = [
             SELECT Id, StageName 
@@ -71,7 +71,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_Bulk() {
+    static void testCloseOpportunitiesBulk() {
         // Bulk test: Close 200+ opportunities
         // Create more opportunities for bulk test
         List<Account> accounts = TestDataFactory.createAccounts(100, 'Bulk Account');
@@ -117,7 +117,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_NullList() {
+    static void testCloseOpportunitiesNullList() {
         // Negative test: Null list should throw exception
         Test.startTest();
         try {
@@ -131,7 +131,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_EmptyList() {
+    static void testCloseOpportunitiesEmptyList() {
         // Negative test: Empty list should throw exception
         List<Id> oppIds = new List<Id>();
         
@@ -147,7 +147,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_InvalidIds() {
+    static void testCloseOpportunitiesInvalidIds() {
         // Edge case: Some opportunity IDs don't exist
         List<Id> oppIds = new List<Id>();
         oppIds.add(UserInfo.getUserId()); // Invalid opportunity ID
@@ -161,7 +161,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_MixedValidInvalidIds() {
+    static void testCloseOpportunitiesMixedValidInvalidIds() {
         // Edge case: Mix of valid and invalid IDs
         List<Opportunity> opportunities = [
             SELECT Id 
@@ -205,7 +205,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_AlreadyClosed() {
+    static void testCloseOpportunitiesAlreadyClosed() {
         // Edge case: Opportunities already in Closed Won stage
         List<Opportunity> opportunities = [
             SELECT Id, StageName 
@@ -241,7 +241,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_DifferentStages() {
+    static void testCloseOpportunitiesDifferentStages() {
         // Edge case: Opportunities in different stages
         List<Account> accounts = TestDataFactory.createAccounts(1, 'Stage Test Account');
         insert accounts;
@@ -285,7 +285,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_PartialSuccess() {
+    static void testCloseOpportunitiesPartialSuccess() {
         // Edge case: Test partial success scenario
         // Create opportunities and then delete one to simulate partial failure
         List<Account> accounts = TestDataFactory.createAccounts(2, 'Partial Test Account');

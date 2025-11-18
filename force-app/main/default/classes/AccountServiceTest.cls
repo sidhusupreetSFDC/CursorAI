@@ -1,5 +1,5 @@
 /**
- * Test class for AccountService
+ * @description Test class for AccountService
  * Tests all methods with positive, negative, bulk, and edge cases
  * 
  * @author Salesforce Developer
@@ -9,7 +9,7 @@
 private class AccountServiceTest {
     
     /**
-     * Test setup method - creates shared test data
+     * @description Test setup method - creates shared test data
      */
     @testSetup
     static void setupTestData() {
@@ -21,7 +21,7 @@ private class AccountServiceTest {
     // ========== setDefaultAnnualRevenue Tests ==========
     
     @isTest
-    static void testSetDefaultAnnualRevenue_WithNullRevenue() {
+    static void testSetDefaultAnnualRevenueWithNullRevenue() {
         // Positive test: Set default revenue for accounts with null revenue
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Test Account');
         
@@ -36,7 +36,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultAnnualRevenue_WithExistingRevenue() {
+    static void testSetDefaultAnnualRevenueWithExistingRevenue() {
         // Positive test: Should not override existing revenue
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Test Account', 1000);
         
@@ -51,7 +51,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultAnnualRevenue_Bulk() {
+    static void testSetDefaultAnnualRevenueBulk() {
         // Bulk test: Process 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Account');
         
@@ -70,7 +70,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultAnnualRevenue_EmptyList() {
+    static void testSetDefaultAnnualRevenueEmptyList() {
         // Edge case: Empty list
         List<Account> accounts = new List<Account>();
         
@@ -83,7 +83,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultAnnualRevenue_NullList() {
+    static void testSetDefaultAnnualRevenueNullList() {
         // Edge case: Null list
         Test.startTest();
         AccountService.setDefaultAnnualRevenue(null);
@@ -96,7 +96,7 @@ private class AccountServiceTest {
     // ========== createFollowUpTasks Tests ==========
     
     @isTest
-    static void testCreateFollowUpTasks_Success() {
+    static void testCreateFollowUpTasksSuccess() {
         // Positive test: Create follow-up tasks for accounts
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Task Test Account');
         insert accounts;
@@ -120,7 +120,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateFollowUpTasks_Bulk() {
+    static void testCreateFollowUpTasksBulk() {
         // Bulk test: Create tasks for 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Task Account');
         insert accounts;
@@ -141,7 +141,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateFollowUpTasks_EmptyList() {
+    static void testCreateFollowUpTasksEmptyList() {
         // Edge case: Empty list
         List<Account> accounts = new List<Account>();
         
@@ -156,7 +156,7 @@ private class AccountServiceTest {
     // ========== createAccounts Tests ==========
     
     @isTest
-    static void testCreateAccounts_Success() {
+    static void testCreateAccountsSuccess() {
         // Positive test: Create accounts successfully
         List<Account> accounts = TestDataFactory.createAccounts(5, 'Create Test Account', 5000);
         
@@ -185,7 +185,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateAccounts_Bulk() {
+    static void testCreateAccountsBulk() {
         // Bulk test: Create 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Create Account', 10000);
         
@@ -205,7 +205,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateAccounts_NullList() {
+    static void testCreateAccountsNullList() {
         // Negative test: Null list should throw exception
         Test.startTest();
         try {
@@ -218,7 +218,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateAccounts_EmptyList() {
+    static void testCreateAccountsEmptyList() {
         // Negative test: Empty list should throw exception
         List<Account> accounts = new List<Account>();
         
@@ -235,7 +235,7 @@ private class AccountServiceTest {
     // ========== updateAccountRevenue Tests ==========
     
     @isTest
-    static void testUpdateAccountRevenue_Success() {
+    static void testUpdateAccountRevenueSuccess() {
         // Positive test: Update account revenue successfully
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Update Test Account', 1000);
         insert accounts;
@@ -275,7 +275,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_Bulk() {
+    static void testUpdateAccountRevenueBulk() {
         // Bulk test: Update 200+ accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Update Account', 1000);
         insert accounts;
@@ -303,7 +303,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_NullAccountIds() {
+    static void testUpdateAccountRevenueNullAccountIds() {
         // Negative test: Null account IDs should throw exception
         Test.startTest();
         try {
@@ -316,7 +316,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_NullRevenue() {
+    static void testUpdateAccountRevenueNullRevenue() {
         // Negative test: Null revenue should throw exception
         List<Account> accounts = TestDataFactory.createAccounts(1, 'Test Account');
         insert accounts;
@@ -334,7 +334,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_InvalidAccountIds() {
+    static void testUpdateAccountRevenueInvalidAccountIds() {
         // Edge case: Some account IDs don't exist
         List<Id> accountIds = new List<Id>();
         accountIds.add(UserInfo.getUserId()); // Invalid account ID
@@ -350,7 +350,7 @@ private class AccountServiceTest {
     // ========== deleteOldAccounts Tests ==========
     
     @isTest
-    static void testDeleteOldAccounts_Success() {
+    static void testDeleteOldAccountsSuccess() {
         // Positive test: Delete old accounts
         // Create accounts that will be considered "old"
         List<Account> oldAccounts = TestDataFactory.createAccounts(5, 'Old Account');
@@ -370,7 +370,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testDeleteOldAccounts_WithDefaultDays() {
+    static void testDeleteOldAccountsWithDefaultDays() {
         // Positive test: Delete with default days (365)
         List<Account> accounts = TestDataFactory.createAccounts(3, 'Default Test Account');
         insert accounts;
@@ -384,7 +384,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testDeleteOldAccounts_NegativeDays() {
+    static void testDeleteOldAccountsNegativeDays() {
         // Edge case: Negative days should default to 365
         List<Account> accounts = TestDataFactory.createAccounts(2, 'Negative Test Account');
         insert accounts;
@@ -398,7 +398,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testDeleteOldAccounts_Bulk() {
+    static void testDeleteOldAccountsBulk() {
         // Bulk test: Process large number of accounts
         List<Account> accounts = TestDataFactory.createAccounts(250, 'Bulk Delete Account');
         insert accounts;

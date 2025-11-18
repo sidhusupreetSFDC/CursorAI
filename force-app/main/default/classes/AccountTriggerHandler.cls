@@ -1,5 +1,5 @@
 /**
- * Trigger Handler for Account object
+ * @description Trigger Handler for Account object
  * Follows trigger handler pattern: Triggers → Handlers → Services
  * Orchestrates trigger logic and delegates to AccountService
  * 
@@ -9,7 +9,7 @@
 public class AccountTriggerHandler {
     
     /**
-     * Entry point for trigger - routes to appropriate handler method
+     * @description Entry point for trigger - routes to appropriate handler method
      * Must be called from trigger context where Trigger variables are available
      */
     public static void handle() {
@@ -29,7 +29,7 @@ public class AccountTriggerHandler {
     }
     
     /**
-     * Handles before insert context
+     * @description Handles before insert context
      * Sets default AnnualRevenue if null
      * @param newAccounts List of new Account records
      */
@@ -40,7 +40,7 @@ public class AccountTriggerHandler {
     }
     
     /**
-     * Handles after insert context
+     * @description Handles after insert context
      * Creates follow-up tasks for new accounts
      * @param newAccounts List of newly inserted Account records
      */
