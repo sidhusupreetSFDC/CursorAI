@@ -154,10 +154,12 @@ public class AccountService {
         }
         
         // Query with security enforcement and limit
+        // Calculate the cutoff date dynamically (can't use variables in date literals)
+        Datetime cutoffDate = Datetime.now().addDays(-daysOld);
         List<Account> oldAccounts = [
             SELECT Id
             FROM Account
-            WHERE CreatedDate < LAST_N_DAYS:daysOld
+            WHERE CreatedDate < :cutoffDate
             WITH SECURITY_ENFORCED
             LIMIT :MAX_DELETE_LIMIT
         ];
