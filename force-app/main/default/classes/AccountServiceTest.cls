@@ -41,7 +41,7 @@ private class AccountServiceTest {
     
     // Test createAccounts - Positive Cases
     @isTest
-    static void testCreateAccounts_Success() {
+    static void testCreateAccountsSuccess() {
         List<Account> newAccounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -67,7 +67,7 @@ private class AccountServiceTest {
     
     // Test createAccounts - Bulk (200+ records)
     @isTest
-    static void testCreateAccounts_Bulk() {
+    static void testCreateAccountsBulk() {
         List<Account> bulkAccounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
             Account acc = new Account();
@@ -89,7 +89,7 @@ private class AccountServiceTest {
     
     // Test createAccounts - Negative Cases
     @isTest
-    static void testCreateAccounts_NullList() {
+    static void testCreateAccountsNullList() {
         Test.startTest();
         try {
             AccountService.createAccounts(null);
@@ -101,7 +101,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateAccounts_EmptyList() {
+    static void testCreateAccountsEmptyList() {
         Test.startTest();
         try {
             AccountService.createAccounts(new List<Account>());
@@ -114,7 +114,7 @@ private class AccountServiceTest {
     
     // Test updateAccountRevenue - Positive Cases
     @isTest
-    static void testUpdateAccountRevenue_Success() {
+    static void testUpdateAccountRevenueSuccess() {
         List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
         List<Id> accountIds = new List<Id>();
         for (Account acc : accounts) {
@@ -141,7 +141,7 @@ private class AccountServiceTest {
     
     // Test updateAccountRevenue - Bulk
     @isTest
-    static void testUpdateAccountRevenue_Bulk() {
+    static void testUpdateAccountRevenueBulk() {
         // Create 200 accounts for bulk test
         List<Account> bulkAccounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
@@ -168,7 +168,7 @@ private class AccountServiceTest {
     
     // Test updateAccountRevenue - Negative Cases
     @isTest
-    static void testUpdateAccountRevenue_NullIds() {
+    static void testUpdateAccountRevenueNullIds() {
         Test.startTest();
         try {
             AccountService.updateAccountRevenue(null, 100000);
@@ -180,7 +180,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_EmptyIds() {
+    static void testUpdateAccountRevenueEmptyIds() {
         Test.startTest();
         try {
             AccountService.updateAccountRevenue(new List<Id>(), 100000);
@@ -192,7 +192,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_NegativeRevenue() {
+    static void testUpdateAccountRevenueNegativeRevenue() {
         List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
         List<Id> accountIds = new List<Id>{ accounts[0].Id };
         
@@ -207,7 +207,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testUpdateAccountRevenue_InvalidIds() {
+    static void testUpdateAccountRevenueInvalidIds() {
         List<Id> invalidIds = new List<Id>{ '001000000000000AAA' };
         
         Test.startTest();
@@ -222,7 +222,7 @@ private class AccountServiceTest {
     
     // Test deleteOldAccounts - Positive Cases
     @isTest
-    static void testDeleteOldAccounts_Success() {
+    static void testDeleteOldAccountsSuccess() {
         Integer daysOld = 365;
         
         Test.startTest();
@@ -238,7 +238,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testDeleteOldAccounts_DefaultDays() {
+    static void testDeleteOldAccountsDefaultDays() {
         Test.startTest();
         Database.DeleteResult[] results = AccountService.deleteOldAccounts(null);
         Test.stopTest();
@@ -248,7 +248,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testDeleteOldAccounts_NoOldAccounts() {
+    static void testDeleteOldAccountsNoOldAccounts() {
         // Delete all old accounts first
         List<Account> oldAccounts = [SELECT Id FROM Account WHERE Name LIKE 'Old Account%'];
         delete oldAccounts;
@@ -262,7 +262,7 @@ private class AccountServiceTest {
     
     // Test setDefaultRevenue - Positive Cases
     @isTest
-    static void testSetDefaultRevenue_WithNullRevenue() {
+    static void testSetDefaultRevenueWithNullRevenue() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 5; i++) {
             Account acc = new Account();
@@ -282,7 +282,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultRevenue_WithExistingRevenue() {
+    static void testSetDefaultRevenueWithExistingRevenue() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 5; i++) {
             Account acc = new Account();
@@ -302,7 +302,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultRevenue_NullList() {
+    static void testSetDefaultRevenueNullList() {
         Test.startTest();
         AccountService.setDefaultRevenue(null);
         Test.stopTest();
@@ -312,7 +312,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testSetDefaultRevenue_EmptyList() {
+    static void testSetDefaultRevenueEmptyList() {
         Test.startTest();
         AccountService.setDefaultRevenue(new List<Account>());
         Test.stopTest();
@@ -323,7 +323,7 @@ private class AccountServiceTest {
     
     // Test createFollowUpTasks - Positive Cases
     @isTest
-    static void testCreateFollowUpTasks_Success() {
+    static void testCreateFollowUpTasksSuccess() {
         List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
         
         // Delete tasks created by trigger to test service method in isolation
@@ -347,7 +347,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateFollowUpTasks_Bulk() {
+    static void testCreateFollowUpTasksBulk() {
         // Create 200 accounts
         List<Account> bulkAccounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
@@ -373,7 +373,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateFollowUpTasks_NullList() {
+    static void testCreateFollowUpTasksNullList() {
         Test.startTest();
         AccountService.createFollowUpTasks(null);
         Test.stopTest();
@@ -383,7 +383,7 @@ private class AccountServiceTest {
     }
     
     @isTest
-    static void testCreateFollowUpTasks_EmptyList() {
+    static void testCreateFollowUpTasksEmptyList() {
         Test.startTest();
         AccountService.createFollowUpTasks(new List<Account>());
         Test.stopTest();

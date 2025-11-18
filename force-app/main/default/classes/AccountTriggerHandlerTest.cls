@@ -16,7 +16,7 @@ private class AccountTriggerHandlerTest {
     
     // Test handleBeforeInsert - Positive Cases
     @isTest
-    static void testHandleBeforeInsert_WithNullRevenue() {
+    static void testHandleBeforeInsertWithNullRevenue() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -38,7 +38,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testHandleBeforeInsert_WithExistingRevenue() {
+    static void testHandleBeforeInsertWithExistingRevenue() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -61,7 +61,7 @@ private class AccountTriggerHandlerTest {
     
     // Test handleBeforeInsert - Bulk
     @isTest
-    static void testHandleBeforeInsert_Bulk() {
+    static void testHandleBeforeInsertBulk() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
             Account acc = new Account();
@@ -84,7 +84,7 @@ private class AccountTriggerHandlerTest {
     
     // Test handleAfterInsert - Positive Cases
     @isTest
-    static void testHandleAfterInsert_CreatesTasks() {
+    static void testHandleAfterInsertCreatesTasks() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -114,7 +114,7 @@ private class AccountTriggerHandlerTest {
     }
     
     @isTest
-    static void testHandleAfterInsert_Bulk() {
+    static void testHandleAfterInsertBulk() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
             Account acc = new Account();
@@ -141,7 +141,7 @@ private class AccountTriggerHandlerTest {
     
     // Test Trigger Execution - Before Insert
     @isTest
-    static void testTrigger_BeforeInsert() {
+    static void testTriggerBeforeInsert() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -163,7 +163,7 @@ private class AccountTriggerHandlerTest {
     
     // Test Trigger Execution - After Insert
     @isTest
-    static void testTrigger_AfterInsert() {
+    static void testTriggerAfterInsert() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 10; i++) {
             Account acc = new Account();
@@ -186,7 +186,7 @@ private class AccountTriggerHandlerTest {
     
     // Test Trigger Execution - Bulk
     @isTest
-    static void testTrigger_BulkInsert() {
+    static void testTriggerBulkInsert() {
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < 200; i++) {
             Account acc = new Account();
@@ -214,7 +214,7 @@ private class AccountTriggerHandlerTest {
     
     // Test Error Handling
     @isTest
-    static void testHandleBeforeInsert_ErrorHandling() {
+    static void testHandleBeforeInsertErrorHandling() {
         // This test verifies error handling in the handler
         // The handler should catch exceptions and wrap them in AccountServiceException
         List<Account> accounts = new List<Account>();

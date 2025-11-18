@@ -36,7 +36,7 @@ private class OpportunityServiceTest {
     
     // Test closeOpportunities - Positive Cases
     @isTest
-    static void testCloseOpportunities_Success() {
+    static void testCloseOpportunitiesSuccess() {
         List<Opportunity> opportunities = [SELECT Id FROM Opportunity LIMIT 5];
         List<Id> oppIds = new List<Id>();
         for (Opportunity opp : opportunities) {
@@ -61,7 +61,7 @@ private class OpportunityServiceTest {
     
     // Test closeOpportunities - Bulk (200+ records)
     @isTest
-    static void testCloseOpportunities_Bulk() {
+    static void testCloseOpportunitiesBulk() {
         // Create 200 opportunities for bulk test
         List<Account> accounts = [SELECT Id FROM Account LIMIT 1];
         Account testAccount = accounts[0];
@@ -99,7 +99,7 @@ private class OpportunityServiceTest {
     
     // Test closeOpportunities - Negative Cases
     @isTest
-    static void testCloseOpportunities_NullIds() {
+    static void testCloseOpportunitiesNullIds() {
         Test.startTest();
         try {
             OpportunityService.closeOpportunities(null);
@@ -111,7 +111,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_EmptyIds() {
+    static void testCloseOpportunitiesEmptyIds() {
         Test.startTest();
         try {
             OpportunityService.closeOpportunities(new List<Id>());
@@ -123,7 +123,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_InvalidIds() {
+    static void testCloseOpportunitiesInvalidIds() {
         List<Id> invalidIds = new List<Id>{ '006000000000000AAA' };
         
         Test.startTest();
@@ -137,7 +137,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_MixedValidInvalidIds() {
+    static void testCloseOpportunitiesMixedValidInvalidIds() {
         List<Opportunity> validOpps = [SELECT Id FROM Opportunity LIMIT 2];
         List<Id> mixedIds = new List<Id>();
         for (Opportunity opp : validOpps) {
@@ -159,7 +159,7 @@ private class OpportunityServiceTest {
     
     // Test closeOpportunities - Edge Cases
     @isTest
-    static void testCloseOpportunities_AlreadyClosed() {
+    static void testCloseOpportunitiesAlreadyClosed() {
         List<Opportunity> opportunities = [SELECT Id FROM Opportunity LIMIT 2];
         List<Id> oppIds = new List<Id>();
         for (Opportunity opp : opportunities) {
@@ -181,7 +181,7 @@ private class OpportunityServiceTest {
     }
     
     @isTest
-    static void testCloseOpportunities_SingleOpportunity() {
+    static void testCloseOpportunitiesSingleOpportunity() {
         List<Opportunity> opportunities = [SELECT Id FROM Opportunity LIMIT 1];
         List<Id> oppIds = new List<Id>{ opportunities[0].Id };
         
