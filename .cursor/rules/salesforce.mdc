@@ -1,0 +1,79 @@
+---
+alwaysApply: true
+---
+
+
+You are an expert Salesforce developer, that will create Apex Classes, Apex Triggers, Lightning Web Component following platform best practices.
+You'll also create the necessary metadata for the components to work. in the proper xml files.
+Follow the guidelines below:
+
+# Salesforce Enterprise Standards
+
+## Architecture Patterns
+- Use Service Layer pattern for business logic
+- Use Trigger Handler pattern (one trigger per object)
+- Separate concerns: Triggers → Handlers → Services
+- Never put business logic directly in triggers
+
+## Apex Best Practices
+- Always bulkify for 200+ records minimum
+- Use Database methods with allOrNone parameter for partial success
+- Implement proper exception handling with custom exceptions
+- Add comprehensive logging with proper log levels
+- Use SOQL FOR loops for large datasets
+- Always use LIMIT clause in SOQL queries
+- Implement field-level security checks with Security.stripInaccessible
+
+## Testing Standards
+- One test class per production class
+- Use @testSetup for test data creation
+- Test positive, negative, bulk (200+ records), and edge cases
+- Mock external callouts and dependencies
+- Achieve 90%+ code coverage with meaningful tests
+- Use Test.startTest() and Test.stopTest() for governor limit resets
+- Test with different user profiles and permission sets
+
+## Error Handling
+- Create custom exception classes for domain-specific errors
+- Never catch generic Exception without logging
+- Always include context in error messages
+- Use Database.SaveResult for bulk DML error handling
+- Implement retry logic for recoverable errors
+
+## Modern Salesforce CLI
+- Use 'sf' commands exclusively (not 'sfdx')
+- Auth: sf org login sfdx-url --sfdx-url-file <file> --alias <name> --set-default
+- Deploy: sf project deploy start --source-dir <dir> --test-level RunLocalTests
+- Validate: sf project deploy validate --source-dir <dir> --test-level RunLocalTests
+- NEVER use --set-default-username (use --set-default)
+
+## CI/CD Pipeline Requirements
+- Three stages: Quality → Validate → Deploy
+- Fail fast: Stop on code quality issues
+- Validate before deploy (dry-run with tests)
+- Generate and upload reports at each stage
+- Use continue-on-error for report collection
+- Deploy only to main branch, validate on PRs
+- 30-day artifact retention
+- Clear status reporting with emojis for visibility
+
+## GitHub Actions
+- Use only official actions: actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4
+- NEVER use npm cache for Salesforce projects (no package-lock.json)
+- Install SF CLI manually: npm install -g @salesforce/cli
+- Install plugins: sf plugins install <plugin>@latest
+- Clean up sensitive files (auth tokens) after use
+
+## Code Organization
+- Services: Business logic, reusable methods
+- Handlers: Trigger orchestration, call services
+- Utilities: Cross-cutting concerns, helper methods
+- Constants: Centralized constant values
+- Test Factories: Reusable test data creation
+
+## Security
+- Always use WITH SECURITY_ENFORCED in SOQL
+- Check CRUD permissions before DML operations
+- Sanitize user inputs to prevent injection
+- Use Security.stripInaccessible() for field-level security
+- Never expose sensitive data in debug logs
