@@ -75,7 +75,9 @@ jobs:
 
       - name: Authenticate Salesforce Org
         run: |
-          echo "${{ secrets.SFDX_AUTH_URL }}" | sf org login sfdx-url --sfdx-url-file stdin --alias deploy-org --no-prompt
+          echo "${{ secrets.SFDX_AUTH_URL }}" > /tmp/sfdx-auth-url.txt
+          sf org login sfdx-url --sfdx-url-file /tmp/sfdx-auth-url.txt --alias deploy-org --no-prompt
+          rm -f /tmp/sfdx-auth-url.txt
 
       - name: Validate Deployment with Local Tests
         id: validate
