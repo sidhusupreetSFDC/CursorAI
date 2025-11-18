@@ -19,8 +19,7 @@ jobs:
         id: code-analyzer
         uses: forcedotcom/run-code-analyzer@v2
         with:
-          run-command: run
-          run-arguments: --normalize-severity --target force-app --outfile code-analyzer-results.html
+          run-arguments: --target force-app
           results-artifact-name: code-analyzer-results
           
       - name: Check for Critical Violations
@@ -39,7 +38,9 @@ jobs:
         if: always()
         with:
           name: code-analyzer-results
-          path: code-analyzer-results.html
+          path: |
+            sfca_results.json
+            sfca_results.html
           retention-days: 30
 
   validate:
