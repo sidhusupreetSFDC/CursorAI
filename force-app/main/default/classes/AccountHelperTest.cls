@@ -1,3 +1,93 @@
+@isTest
+private class AccountHelperTest {
+    @testSetup
+    static void setupData() {
+        List<Account> accounts = new List<Account>();
+        for (Integer i = 0; i < 3; i++) {
+            accounts.add(new Account(
+                Name = 'Test Account ' + i,
+                Rating = 'Cold'
+            ));
+        }
+        insert accounts;
+    }
+
+    @isTest
+    static void updateAccountRating_updatesSingleRecord() {
+        Account testAccount = [SELECT Id, Rating FROM Account LIMIT 1];
+
+        Test.startTest();
+        AccountHelper.updateAccountRating(testAccount.Id, 'Hot');
+        Test.stopTest();
+
+        testAccount = [SELECT Rating FROM Account WHERE Id = :testAccount.Id];
+        System.assertEquals('Hot', testAccount.Rating, 'Rating should update via single-record helper.');
+    }
+
+    @isTest
+    static void updateAccountRating_throwsForMissingId() {
+        try {
+            AccountHelper.updateAccountRating(null, 'Warm');
+            System.assert(false, 'Method should throw when Account Id is null.');
+        } catch (IllegalArgumentException ex) {
+            System.assertEquals('Account Id is required.', ex.getMessage());
+        }
+    }
+
+    @isTest
+    static void updateAccountRating_throwsForBlankRating() {
+        Account testAccount = [SELECT Id FROM Account LIMIT 1];
+
+        try {
+            AccountHelper.updateAccountRating(testAccount.Id, '');
+            System.assert(false, 'Method should throw when rating is blank.');
+        } catch (IllegalArgumentException ex) {
+            System.assertEquals('Rating is required.', ex.getMessage());
+        }
+    }
+
+    @isTest
+    static void updateAccountRatings_bulkUpdatesValidRecords() {
+        List<Account> accounts = [
+            SELECT Id, Rating
+            FROM Account
+            ORDER BY CreatedDate
+            LIMIT 3
+        ];
+
+        Map<Id, String> ratingUpdates = new Map<Id, String>{
+            accounts[0].Id => 'Warm',
+            accounts[1].Id => 'Hot',
+            accounts[2].Id => null
+        };
+        ratingUpdates.put(null, 'Cold');
+
+        Test.startTest();
+        AccountHelper.updateAccountRatings(ratingUpdates);
+        Test.stopTest();
+
+        accounts = [
+            SELECT Id, Rating
+            FROM Account
+            WHERE Id IN :new List<Id>{accounts[0].Id, accounts[1].Id, accounts[2].Id}
+            ORDER BY CreatedDate
+        ];
+
+        System.assertEquals('Warm', accounts[0].Rating, 'First account should update to Warm.');
+        System.assertEquals('Hot', accounts[1].Rating, 'Second account should update to Hot.');
+        System.assertEquals('Cold', accounts[2].Rating, 'Third account should remain unchanged because blank rating was ignored.');
+    }
+
+    @isTest
+    static void updateAccountRatings_handlesEmptyInput() {
+        Test.startTest();
+        AccountHelper.updateAccountRatings(new Map<Id, String>());
+        AccountHelper.updateAccountRatings(null);
+        Test.stopTest();
+
+        System.assertEquals(3, [SELECT COUNT() FROM Account], 'No accounts should be added or removed when inputs are empty.');
+    }
+}
 /**
  * Test class for AccountHelper.
  * Provides comprehensive test coverage for AccountHelper methods.

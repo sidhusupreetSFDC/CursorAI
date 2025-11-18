@@ -1,44 +1,60 @@
-/**
- * Helper class for Account-related operations.
- * Provides utility methods for common Account data manipulation tasks.
- */
-public class AccountHelper {
-    
+public with sharing class AccountHelper {
     /**
-     * Updates the Rating field for a single Account record.
-     * 
-     * @param accountId The Id of the Account record to update
-     * @param rating The new rating value to assign to the Account
-     * @throws NullPointerException if accountId is null
-     * @throws Exception if rating is null or empty
-     * @throws QueryException if the Account record is not found
-     * @throws DmlException if the update operation fails
+     * Updates the rating for a single Account record. This method delegates to the bulk-safe method to
+     * ensure consistent validation and behavior.
+     *
+     * @param accountId The Id of the Account to update (required).
+     * @param rating The new rating value to apply (required).
      */
     public static void updateAccountRating(Id accountId, String rating) {
-        // Validate input parameters
         if (accountId == null) {
-            throw new NullPointerException('Account Id cannot be null');
+            throw new IllegalArgumentException('Account Id is required.');
         }
         if (String.isBlank(rating)) {
-            throw new Exception('Rating cannot be null or empty');
+            throw new IllegalArgumentException('Rating is required.');
         }
-        
-        try {
-            // Query the Account record
-            Account account = [
-                SELECT Id, Rating 
-                FROM Account 
-                WHERE Id = :accountId 
-                LIMIT 1
-            ];
-            
-            // Update the rating
-            account.Rating = rating;
-            update account;
-        } catch (QueryException e) {
-            throw new QueryException('Account not found with Id: ' + accountId, e);
-        } catch (DmlException e) {
-            throw new DmlException('Failed to update Account rating: ' + e.getMessage(), e);
+
+        updateAccountRatings(new Map<Id, String>{accountId => rating});
+    }
+
+    /**
+     * Bulk-safe method to update Account ratings.
+     *
+     * @param accountRatings Map of Account Ids to the desired rating value. Null or blank rating values
+     *                       are ignored to avoid overwriting existing data unintentionally.
+     */
+    public static void updateAccountRatings(Map<Id, String> accountRatings) {
+        if (accountRatings == null || accountRatings.isEmpty()) {
+            return;
+        }
+
+        Set<Id> validAccountIds = new Set<Id>();
+        for (Id accountId : accountRatings.keySet()) {
+            if (accountId != null) {
+                validAccountIds.add(accountId);
+            }
+        }
+
+        if (validAccountIds.isEmpty()) {
+            return;
+        }
+
+        List<Account> accountsToUpdate = [
+            SELECT Id, Rating
+            FROM Account
+            WHERE Id IN :validAccountIds
+            FOR UPDATE
+        ];
+
+        for (Account acc : accountsToUpdate) {
+            String newRating = accountRatings.get(acc.Id);
+            if (String.isNotBlank(newRating)) {
+                acc.Rating = newRating;
+            }
+        }
+
+        if (!accountsToUpdate.isEmpty()) {
+            Database.update(accountsToUpdate, false);
         }
     }
 }
