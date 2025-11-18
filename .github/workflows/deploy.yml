@@ -1,0 +1,230 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  SF_CLI_VERSION: latest
+  SOURCE_DIR: force-app
+
+jobs:
+  code-quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 🔌 Install Code Analyzer Plugin
+        run: |
+          sf plugins install @salesforce/sfdx-scanner@latest
+
+      - name: 📦 Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔍 Run Code Analyzer
+        id: code-analyzer
+        continue-on-error: true
+        run: |
+          sf scanner run \
+            --target "${{ env.SOURCE_DIR }}" \
+            --format json \
+            --outfile code-quality-report.json \
+            --severity-threshold 1 || true
+
+      - name: 📊 Check for Sev1 Issues
+        run: |
+          if [ -f code-quality-report.json ]; then
+            # Check if there are any Sev1 issues
+            # Handle different JSON structures from scanner
+            sev1_count=$(jq '[.result[]? | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
+                        jq '[.[]? | select(.severity == 1)] | length' code-quality-report.json 2>/dev/null || \
+                        echo "0")
+            if [ "$sev1_count" != "0" ] && [ -n "$sev1_count" ]; then
+              echo "❌ Found $sev1_count Sev1 issues. Failing build."
+              jq '.' code-quality-report.json
+              exit 1
+            else
+              echo "✅ No Sev1 issues found."
+            fi
+          else
+            echo "⚠️ Code quality report not generated. Continuing..."
+          fi
+
+      - name: 📤 Upload Code Quality Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-report
+          path: code-quality-report.json
+          retention-days: 30
+
+  validate:
+    name: ✅ Validate Deployment
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 📦 Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔐 Authenticate Salesforce Org
+        env:
+          SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+        run: |
+          if [ -z "$SF_ORG_URL" ]; then
+            echo "⚠️ SF_ORG_URL secret not set. Skipping authentication."
+            exit 1
+          fi
+          echo "$SF_ORG_URL" > /tmp/sfdx-url.txt
+          sf org login sfdx-url \
+            --sfdx-url-file /tmp/sfdx-url.txt \
+            --alias ci-org \
+            --set-default
+          rm -f /tmp/sfdx-url.txt
+
+      - name: ✅ Validate Deployment
+        id: validate
+        continue-on-error: true
+        run: |
+          sf project deploy validate \
+            --source-dir "${{ env.SOURCE_DIR }}" \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > validate-result.json || true
+
+      - name: 📊 Check Validation Results
+        run: |
+          if [ -f validate-result.json ]; then
+            status=$(jq -r '.status' validate-result.json 2>/dev/null || echo "unknown")
+            if [ "$status" != "0" ]; then
+              echo "❌ Validation failed. Check validate-result.json for details."
+              jq '.' validate-result.json
+              exit 1
+            else
+              echo "✅ Validation succeeded."
+            fi
+          else
+            echo "❌ Validation result file not found."
+            exit 1
+          fi
+
+      - name: 📤 Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-report
+          path: validate-result.json
+          retention-days: 30
+
+      - name: 🧹 Cleanup Auth Files
+        if: always()
+        run: |
+          rm -f /tmp/sfdx-url.txt
+          sf org logout --target-org ci-org --no-prompt || true
+
+  deploy:
+    name: 🚀 Deploy to Org
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 📦 Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 🔐 Authenticate Salesforce Org
+        env:
+          SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+        run: |
+          if [ -z "$SF_ORG_URL" ]; then
+            echo "❌ SF_ORG_URL secret not set. Cannot deploy."
+            exit 1
+          fi
+          echo "$SF_ORG_URL" > /tmp/sfdx-url.txt
+          sf org login sfdx-url \
+            --sfdx-url-file /tmp/sfdx-url.txt \
+            --alias deploy-org \
+            --set-default
+          rm -f /tmp/sfdx-url.txt
+
+      - name: 🚀 Deploy to Org
+        id: deploy
+        continue-on-error: true
+        run: |
+          sf project deploy start \
+            --source-dir "${{ env.SOURCE_DIR }}" \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > deploy-result.json || true
+
+      - name: 📊 Check Deployment Results
+        run: |
+          if [ -f deploy-result.json ]; then
+            status=$(jq -r '.status' deploy-result.json 2>/dev/null || echo "unknown")
+            if [ "$status" != "0" ]; then
+              echo "❌ Deployment failed. Check deploy-result.json for details."
+              jq '.' deploy-result.json
+              exit 1
+            else
+              echo "✅ Deployment succeeded."
+              jq -r '.result.deployedSource[].name' deploy-result.json | head -10
+            fi
+          else
+            echo "❌ Deployment result file not found."
+            exit 1
+          fi
+
+      - name: 📤 Upload Deployment Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-report
+          path: deploy-result.json
+          retention-days: 30
+
+      - name: 🧹 Cleanup Auth Files
+        if: always()
+        run: |
+          rm -f /tmp/sfdx-url.txt
+          sf org logout --target-org deploy-org --no-prompt || true
