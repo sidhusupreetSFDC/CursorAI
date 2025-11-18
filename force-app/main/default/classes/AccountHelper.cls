@@ -8,7 +8,9 @@ public class AccountHelper {
     /**
      * @description Updates Annual Revenue for a list of Account records
      * @param accountIds List of Account IDs to update
+     * @throws SecurityException if insufficient permissions
      * @throws DmlException if update operation fails
+     * @throws QueryException if query operation fails
      */
     public static void updateAccounts(List<Id> accountIds) {
         // Validate input
