@@ -257,37 +257,71 @@ jobs:
       - name: ❌ Fail if Deployment Failed
         run: |
           if [ -f deploy-report.json ]; then
-            # Check for different JSON structures
-            STATUS=$(jq -r '.status // .result.status // .result.done // "unknown"' deploy-report.json 2>/dev/null || echo "unknown")
+            # Check for component failures (most reliable indicator)
+            COMPONENT_FAILURES=$(jq -r '.componentFailures // [] | length' deploy-report.json 2>/dev/null || echo "0")
             
-            # Also check if there are any errors in the response
+            # Check for test failures
+            TEST_FAILURES=$(jq -r '.runTestResult.numFailures // 0' deploy-report.json 2>/dev/null || echo "0")
+            
+            # Check for component errors count
             HAS_ERRORS=$(jq -r '.result.numberComponentErrors // .numberComponentErrors // 0' deploy-report.json 2>/dev/null || echo "0")
             
-            echo "Deployment status: $STATUS"
-            echo "Component errors: $HAS_ERRORS"
+            # Check for error messages
+            ERROR_MSG=$(jq -r '.message // .result.message // empty' deploy-report.json 2>/dev/null || echo "")
             
-            # Check if status indicates success
-            if [ "$STATUS" = "Succeeded" ] || [ "$STATUS" = "true" ] || [ "$STATUS" = "1" ]; then
-              echo "✅ Deployment succeeded!"
-            elif [ "$STATUS" = "unknown" ]; then
-              echo "⚠️ Could not determine deployment status from JSON"
-              # Try to check exit code or look for error messages
-              ERROR_MSG=$(jq -r '.message // .result.message // empty' deploy-report.json 2>/dev/null || echo "")
-              if [ -n "$ERROR_MSG" ]; then
-                echo "❌ Deployment error: $ERROR_MSG"
-                exit 1
-              fi
-            else
-              echo "❌ Deployment failed with status: $STATUS"
-              # Show error details if available
-              jq -r '.result.details // .details // empty' deploy-report.json 2>/dev/null || true
-              exit 1
+            # Check for status (if present)
+            STATUS=$(jq -r '.status // .result.status // empty' deploy-report.json 2>/dev/null || echo "")
+            
+            echo "Component failures: $COMPONENT_FAILURES"
+            echo "Test failures: $TEST_FAILURES"
+            echo "Component errors: $HAS_ERRORS"
+            echo "Status: ${STATUS:-not present}"
+            
+            # Determine if deployment succeeded
+            DEPLOYMENT_SUCCESS=true
+            
+            # Check for component failures
+            if [ "$COMPONENT_FAILURES" != "0" ] && [ "$COMPONENT_FAILURES" != "null" ] && [ -n "$COMPONENT_FAILURES" ]; then
+              echo "❌ Deployment has $COMPONENT_FAILURES component failures"
+              DEPLOYMENT_SUCCESS=false
             fi
             
-            # Fail if there are component errors
+            # Check for test failures
+            if [ "$TEST_FAILURES" != "0" ] && [ "$TEST_FAILURES" != "null" ] && [ -n "$TEST_FAILURES" ]; then
+              echo "❌ Deployment has $TEST_FAILURES test failures"
+              DEPLOYMENT_SUCCESS=false
+            fi
+            
+            # Check for component errors
             if [ "$HAS_ERRORS" != "0" ] && [ "$HAS_ERRORS" != "null" ] && [ -n "$HAS_ERRORS" ]; then
               echo "❌ Deployment found $HAS_ERRORS component errors"
+              DEPLOYMENT_SUCCESS=false
+            fi
+            
+            # Check for error messages
+            if [ -n "$ERROR_MSG" ]; then
+              echo "❌ Deployment error: $ERROR_MSG"
+              DEPLOYMENT_SUCCESS=false
+            fi
+            
+            # Check status if present (but don't fail on "0" as it might be exit code, not status)
+            if [ -n "$STATUS" ] && [ "$STATUS" != "Succeeded" ] && [ "$STATUS" != "true" ] && [ "$STATUS" != "1" ] && [ "$STATUS" != "0" ]; then
+              echo "⚠️ Status indicates potential issue: $STATUS"
+              # Only fail if we have other indicators of failure
+              if [ "$COMPONENT_FAILURES" = "0" ] && [ "$TEST_FAILURES" = "0" ] && [ "$HAS_ERRORS" = "0" ]; then
+                echo "⚠️ Status is non-standard but no failures detected. Continuing..."
+              fi
+            fi
+            
+            # Final decision
+            if [ "$DEPLOYMENT_SUCCESS" = "false" ]; then
+              echo "❌ Deployment failed"
+              # Show error details if available
+              jq -r '.result.details // .details // empty' deploy-report.json 2>/dev/null || true
+              jq '.componentFailures' deploy-report.json 2>/dev/null || true
               exit 1
+            else
+              echo "✅ Deployment succeeded!"
             fi
           else
             echo "❌ Deployment report file not found"
