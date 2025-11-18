@@ -1,0 +1,196 @@
+name: Salesforce CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  SF_CLI_VERSION: latest
+  SOURCE_DIR: force-app
+
+jobs:
+  code-quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 🔌 Install Code Analyzer Plugin
+        run: |
+          sf plugins install @salesforce/sfdx-scanner@latest
+
+      - name: 🔍 Run Code Analyzer
+        id: scanner
+        continue-on-error: true
+        run: |
+          sf scanner run \
+            --target "${{ env.SOURCE_DIR }}" \
+            --format csv \
+            --outfile scanner-results.csv \
+            --severity-threshold 1 || echo "scanner_exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: 📊 Upload Scanner Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-report
+          path: scanner-results.csv
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: ❌ Fail on Sev1 Issues
+        if: steps.scanner.outcome == 'failure' || (steps.scanner.outputs.scanner_exit_code != '' && steps.scanner.outputs.scanner_exit_code != '0')
+        run: |
+          echo "::error::Code quality check failed with Severity 1 issues"
+          if [ -f scanner-results.csv ]; then
+            echo "Scanner results:"
+            cat scanner-results.csv
+          fi
+          exit 1
+
+  validate:
+    name: ✅ Validate Deployment
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 🔐 Authenticate Salesforce Org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "::error::SFDX_AUTH_URL secret is not set"
+            exit 1
+          fi
+          echo "$SFDX_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias ci-org --set-default
+
+      - name: ✅ Validate Deployment
+        id: validate
+        continue-on-error: true
+        run: |
+          sf project deploy validate \
+            --source-dir "${{ env.SOURCE_DIR }}" \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > validate-results.json || echo "validate_exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: 📊 Parse Validation Results
+        if: always()
+        run: |
+          if [ -f validate-results.json ]; then
+            cat validate-results.json | jq '.' || true
+          fi
+
+      - name: 📊 Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-report
+          path: validate-results.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: ❌ Fail on Validation Errors
+        if: steps.validate.outcome == 'failure' || steps.validate.outputs.validate_exit_code == '1'
+        run: |
+          echo "::error::Deployment validation failed"
+          exit 1
+
+      - name: 🧹 Cleanup Auth Files
+        if: always()
+        run: |
+          rm -f auth.txt
+          sf org logout --target-org ci-org --no-prompt || true
+
+  deploy:
+    name: 🚀 Deploy to Org
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli@${{ env.SF_CLI_VERSION }}
+          sf --version
+
+      - name: 🔐 Authenticate Salesforce Org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "::error::SFDX_AUTH_URL secret is not set"
+            exit 1
+          fi
+          echo "$SFDX_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias deploy-org --set-default
+
+      - name: 🚀 Deploy to Salesforce
+        id: deploy
+        run: |
+          sf project deploy start \
+            --source-dir "${{ env.SOURCE_DIR }}" \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > deploy-results.json || echo "deploy_exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: 📊 Parse Deployment Results
+        if: always()
+        run: |
+          if [ -f deploy-results.json ]; then
+            cat deploy-results.json | jq '.' || true
+          fi
+
+      - name: 📊 Upload Deployment Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-report
+          path: deploy-results.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: ❌ Fail on Deployment Errors
+        if: steps.deploy.outcome == 'failure' || steps.deploy.outputs.deploy_exit_code == '1'
+        run: |
+          echo "::error::Deployment failed"
+          exit 1
+
+      - name: 🧹 Cleanup Auth Files
+        if: always()
+        run: |
+          rm -f auth.txt
+          sf org logout --target-org deploy-org --no-prompt || true
