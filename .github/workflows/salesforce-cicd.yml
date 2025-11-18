@@ -200,7 +200,7 @@ jobs:
           
           # Authenticate using the auth URL
           echo "$SFDX_AUTH_URL" > auth.txt
-          sf org login sfdx-url --sfdx-url-file auth.txt --alias ci-cd-org --set-default-username
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias ci-cd-org --set-default
           
           # Verify authentication
           sf org display --target-org ci-cd-org
