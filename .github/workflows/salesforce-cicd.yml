@@ -1,0 +1,359 @@
+name: Salesforce CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+env:
+  SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+  SF_CLI_VERSION: latest
+
+jobs:
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    outputs:
+      has-sev1-violations: ${{ steps.check-violations.outputs.has-sev1 }}
+      violation-count: ${{ steps.check-violations.outputs.count }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli@latest
+
+      - name: Verify Salesforce CLI installation
+        run: |
+          echo "Salesforce CLI version:"
+          sf --version
+          echo "Code Analyzer plugin version:"
+          sf scanner --version || echo "Scanner plugin not installed"
+
+      - name: Install Salesforce Code Analyzer plugin
+        run: |
+          echo "Installing Salesforce Code Analyzer plugin..."
+          sf plugins install @salesforce/sfdx-scanner || sf plugins install @salesforce/code-analyzer || true
+          sf scanner --version || echo "Scanner plugin installed"
+
+      - name: Run Code Analyzer with detail view
+        id: run-scanner
+        continue-on-error: true
+        run: |
+          echo "Running Salesforce Code Analyzer..."
+          mkdir -p reports
+          
+          # Run scanner with detail view and JSON output
+          # Try different scanner command formats for compatibility
+          sf scanner run \
+            --target "force-app" \
+            --format json \
+            --outfile "reports/code-analyzer-results.json" \
+            --severity-threshold 1 \
+            --engine "eslint-lwc,eslint,pmd" 2>&1 | tee reports/scanner-output.log || \
+          sf scanner run \
+            --target "force-app" \
+            --format json \
+            --output-dir reports \
+            --severity-threshold 1 2>&1 | tee reports/scanner-output.log || true
+          
+          # Also generate human-readable output
+          sf scanner run \
+            --target "force-app" \
+            --format table \
+            --outfile "reports/code-analyzer-results.txt" 2>&1 || true
+          
+          # If output-dir was used, rename the file
+          if [ -f "reports/results.json" ] && [ ! -f "reports/code-analyzer-results.json" ]; then
+            mv reports/results.json reports/code-analyzer-results.json
+          fi
+
+      - name: Parse and check violations
+        id: check-violations
+        run: |
+          echo "Parsing code analyzer results..."
+          
+          if [ ! -f "reports/code-analyzer-results.json" ]; then
+            echo "No scanner results file found. Creating empty report."
+            echo '{"violations": []}' > reports/code-analyzer-results.json
+          fi
+          
+          # Handle different JSON structures - try multiple formats
+          # Format 1: {violations: [...]}
+          # Format 2: [{violations: [...]}]
+          # Format 3: {results: [{violations: [...]}]}
+          
+          # Normalize to a standard format for parsing
+          NORMALIZED=$(cat reports/code-analyzer-results.json | jq '
+            if type == "array" then
+              {violations: [.[] | .violations // []] | flatten}
+            elif .results then
+              {violations: [.results[] | .violations // []] | flatten}
+            elif .violations then
+              .
+            else
+              {violations: []}
+            end' 2>/dev/null || echo '{"violations": []}')
+          
+          echo "$NORMALIZED" > reports/normalized-results.json
+          
+          # Parse JSON and count violations by severity
+          VIOLATIONS=$(echo "$NORMALIZED" | jq -r '.violations // [] | length' 2>/dev/null || echo "0")
+          SEV1_COUNT=$(echo "$NORMALIZED" | jq -r '[.violations // [] | .[] | select(.severity == 1 or .severity == "Critical" or .severity == "1")] | length' 2>/dev/null || echo "0")
+          SEV2_COUNT=$(echo "$NORMALIZED" | jq -r '[.violations // [] | .[] | select(.severity == 2 or .severity == "High" or .severity == "2")] | length' 2>/dev/null || echo "0")
+          SEV3_COUNT=$(echo "$NORMALIZED" | jq -r '[.violations // [] | .[] | select(.severity == 3 or .severity == "Medium" or .severity == "3")] | length' 2>/dev/null || echo "0")
+          SEV4_COUNT=$(echo "$NORMALIZED" | jq -r '[.violations // [] | .[] | select(.severity == 4 or .severity == "Low" or .severity == "4")] | length' 2>/dev/null || echo "0")
+          
+          echo "========================================="
+          echo "Code Analyzer Violation Summary"
+          echo "========================================="
+          echo "Total Violations: $VIOLATIONS"
+          echo "Severity 1 (Critical): $SEV1_COUNT"
+          echo "Severity 2 (High): $SEV2_COUNT"
+          echo "Severity 3 (Medium): $SEV3_COUNT"
+          echo "Severity 4 (Low): $SEV4_COUNT"
+          echo "========================================="
+          
+          # Output violation counts for other steps
+          echo "count=$VIOLATIONS" >> $GITHUB_OUTPUT
+          echo "sev1=$SEV1_COUNT" >> $GITHUB_OUTPUT
+          echo "sev2=$SEV2_COUNT" >> $GITHUB_OUTPUT
+          echo "sev3=$SEV3_COUNT" >> $GITHUB_OUTPUT
+          echo "sev4=$SEV4_COUNT" >> $GITHUB_OUTPUT
+          
+          # Check for Sev1 violations
+          if [ "$SEV1_COUNT" -gt "0" ]; then
+            echo "has-sev1=true" >> $GITHUB_OUTPUT
+            echo "❌ FAILED: Found $SEV1_COUNT Severity 1 (Critical) violations"
+            
+            # Display Sev1 violations
+            echo ""
+            echo "Critical Violations Details:"
+            cat reports/normalized-results.json | jq -r '.violations // [] | .[] | select(.severity == 1 or .severity == "Critical" or .severity == "1") | "\(.ruleName // .rule // "Unknown"): \(.message // .description // "No message") [\(.fileName // .filePath // "Unknown"):\(.line // .lineNumber // "?")]"' 2>/dev/null || true
+            
+            exit 1
+          else
+            echo "has-sev1=false" >> $GITHUB_OUTPUT
+            echo "✅ No Severity 1 violations found"
+          fi
+
+      - name: Upload Code Analyzer Results (JSON)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-analyzer-results-json
+          path: reports/code-analyzer-results.json
+          retention-days: 30
+
+      - name: Upload Code Analyzer Results (Text)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-analyzer-results-text
+          path: reports/code-analyzer-results.txt
+          retention-days: 30
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy to Salesforce
+    runs-on: ubuntu-latest
+    needs: code-quality
+    if: |
+      needs.code-quality.outputs.has-sev1-violations == 'false' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Salesforce CLI
+        run: npm install -g @salesforce/cli@latest
+
+      - name: Authenticate with Salesforce
+        id: auth
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          echo "Authenticating with Salesforce..."
+          
+          if [ -z "$SFDX_AUTH_URL" ]; then
+            echo "❌ ERROR: SFDX_AUTH_URL secret is not set"
+            exit 1
+          fi
+          
+          # Authenticate using the auth URL
+          echo "$SFDX_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias ci-cd-org --set-default-username
+          
+          # Verify authentication
+          sf org display --target-org ci-cd-org
+          
+          echo "✅ Successfully authenticated with Salesforce"
+          
+          # Clean up auth file
+          rm -f auth.txt
+
+      - name: Validate deployment source
+        run: |
+          echo "Validating deployment source..."
+          if [ ! -d "force-app" ]; then
+            echo "❌ ERROR: force-app directory not found"
+            exit 1
+          fi
+          
+          echo "✅ Deployment source validated"
+          echo "Source directory: force-app"
+          ls -la force-app/main/default/ || true
+
+      - name: Deploy to Salesforce with tests
+        id: deploy
+        continue-on-error: true
+        run: |
+          echo "Starting deployment to Salesforce..."
+          mkdir -p reports
+          
+          # Deploy with RunLocalTests
+          DEPLOY_RESULT=$(sf project deploy start \
+            --source-dir force-app \
+            --target-org ci-cd-org \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json 2>&1) || DEPLOY_EXIT_CODE=$?
+          
+          # Save deployment result
+          echo "$DEPLOY_RESULT" > reports/deployment-result.json
+          
+          # Check if deployment command succeeded
+          if [ -n "$DEPLOY_EXIT_CODE" ] && [ "$DEPLOY_EXIT_CODE" -ne 0 ]; then
+            echo "❌ Deployment command failed with exit code: $DEPLOY_EXIT_CODE"
+            echo "Deployment output:"
+            echo "$DEPLOY_RESULT"
+            exit $DEPLOY_EXIT_CODE
+          fi
+          
+          echo "✅ Deployment command completed successfully"
+
+      - name: Parse deployment report
+        id: parse-deployment
+        run: |
+          echo "Parsing deployment report..."
+          
+          if [ ! -f "reports/deployment-result.json" ]; then
+            echo "❌ ERROR: Deployment result file not found"
+            exit 1
+          fi
+          
+          # Parse deployment JSON
+          DEPLOY_STATUS=$(cat reports/deployment-result.json | jq -r '.status // .result.status // "unknown"' 2>/dev/null || echo "unknown")
+          DEPLOY_SUCCESS=$(cat reports/deployment-result.json | jq -r '.result.status // .status // "unknown"' 2>/dev/null || echo "unknown")
+          DEPLOY_ID=$(cat reports/deployment-result.json | jq -r '.result.id // .id // "unknown"' 2>/dev/null || echo "unknown")
+          
+          # Check for errors in the result
+          ERROR_COUNT=$(cat reports/deployment-result.json | jq -r '[.result.details.componentFailures // [] | .[]] | length' 2>/dev/null || echo "0")
+          TEST_FAILURES=$(cat reports/deployment-result.json | jq -r '[.result.details.runTestResult.failures // [] | .[]] | length' 2>/dev/null || echo "0")
+          
+          echo "========================================="
+          echo "Deployment Report Summary"
+          echo "========================================="
+          echo "Deployment ID: $DEPLOY_ID"
+          echo "Status: $DEPLOY_SUCCESS"
+          echo "Component Failures: $ERROR_COUNT"
+          echo "Test Failures: $TEST_FAILURES"
+          echo "========================================="
+          
+          # Output values for other steps
+          echo "status=$DEPLOY_SUCCESS" >> $GITHUB_OUTPUT
+          echo "deploy-id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "error-count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+          echo "test-failures=$TEST_FAILURES" >> $GITHUB_OUTPUT
+          
+          # Check deployment success
+          if [ "$DEPLOY_SUCCESS" != "Succeeded" ] && [ "$DEPLOY_SUCCESS" != "succeeded" ]; then
+            echo "❌ Deployment failed with status: $DEPLOY_SUCCESS"
+            
+            # Display component failures if any
+            if [ "$ERROR_COUNT" -gt "0" ]; then
+              echo ""
+              echo "Component Failures:"
+              cat reports/deployment-result.json | jq -r '.result.details.componentFailures // [] | .[] | "\(.fullName): \(.problem)"' 2>/dev/null || true
+            fi
+            
+            # Display test failures if any
+            if [ "$TEST_FAILURES" -gt "0" ]; then
+              echo ""
+              echo "Test Failures:"
+              cat reports/deployment-result.json | jq -r '.result.details.runTestResult.failures // [] | .[] | "\(.name): \(.message)"' 2>/dev/null || true
+            fi
+            
+            exit 1
+          else
+            echo "✅ Deployment succeeded"
+            
+            # Display test results summary
+            TEST_COUNT=$(cat reports/deployment-result.json | jq -r '.result.details.runTestResult.numTestsRun // 0' 2>/dev/null || echo "0")
+            TEST_PASSED=$(cat reports/deployment-result.json | jq -r '.result.details.runTestResult.numFailures // 0' 2>/dev/null || echo "0")
+            echo "Tests Run: $TEST_COUNT"
+            echo "Tests Passed: $((TEST_COUNT - TEST_FAILURES))"
+          fi
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: reports/deployment-result.json
+          retention-days: 30
+
+      - name: Deployment status check
+        if: steps.parse-deployment.outputs.status != 'Succeeded' && steps.parse-deployment.outputs.status != 'succeeded'
+        run: |
+          echo "❌ Deployment failed. Check the deployment report artifact for details."
+          exit 1
+
+  pipeline-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, deploy]
+    if: always()
+    
+    steps:
+      - name: Display pipeline summary
+        run: |
+          echo "========================================="
+          echo "Pipeline Execution Summary"
+          echo "========================================="
+          echo "Code Quality: ${{ needs.code-quality.result }}"
+          echo "Deployment: ${{ needs.deploy.result }}"
+          echo "========================================="
+          
+          if [ "${{ needs.code-quality.result }}" != "success" ]; then
+            echo "❌ Code Quality stage failed"
+            exit 1
+          fi
+          
+          if [ "${{ needs.deploy.result }}" != "success" ] && [ "${{ needs.deploy.result }}" != "skipped" ]; then
+            echo "❌ Deployment stage failed"
+            exit 1
+          fi
+          
+          echo "✅ Pipeline completed successfully"
+
