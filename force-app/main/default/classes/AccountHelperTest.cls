@@ -1,5 +1,6 @@
 /**
- * @description Test class for AccountHelper
+ * @description Comprehensive test class for AccountHelper.
+ *              Tests all scenarios including positive, negative, bulk, and edge cases.
  * @author Salesforce
  * @date 2025
  */
@@ -7,6 +8,7 @@
 private class AccountHelperTest {
     private static final Integer BULK_TEST_SIZE = 201;
     private static final String INVALID_ACCOUNT_ID_PREFIX = '001000000000000AAA';
+    private static final String TEST_ACCOUNT_NAME_PREFIX = 'Test Account';
 
     @testSetup
     static void createTestData() {
@@ -206,6 +208,106 @@ private class AccountHelperTest {
         );
     }
 
+    // Negative Test Cases
+
+    @IsTest
+    static void updateAccounts_throwsExceptionOnDmlFailure() {
+        List<Account> accounts = createBulkTestAccounts(1);
+        Account accountToDelete = accounts[0];
+        delete accountToDelete;
+
+        Test.startTest();
+        try {
+            AccountHelper.updateAccounts(new List<Id>{accountToDelete.Id});
+            System.assert(false, 'Expected AccountHelperException to be thrown.');
+        } catch (AccountHelper.AccountHelperException ex) {
+            System.assert(
+                ex.getMessage().contains('Unable to update accounts'),
+                'Exception message should indicate account update failure.'
+            );
+        }
+        Test.stopTest();
+    }
+
+    @IsTest
+    static void updateAccounts_handlesVeryLargeBulkOperation() {
+        List<Account> bulkAccounts = createBulkTestAccounts(500);
+
+        Test.startTest();
+        List<Id> accountIds = new List<Id>();
+        for (Account acc : bulkAccounts) {
+            accountIds.add(acc.Id);
+        }
+        AccountHelper.updateAccounts(accountIds);
+        Test.stopTest();
+
+        Integer updatedCount = [
+            SELECT COUNT()
+            FROM Account
+            WHERE Id IN :accountIds
+            AND AnnualRevenue = :AccountHelper.TARGET_ANNUAL_REVENUE
+        ];
+        System.assertEquals(
+            500,
+            updatedCount,
+            'All 500 accounts should be updated successfully.'
+        );
+    }
+
+    @IsTest
+    static void updateAccounts_handlesMixedValidAndInvalidIds() {
+        List<Account> validAccounts = createBulkTestAccounts(5);
+        List<Id> mixedIds = new List<Id>();
+        
+        for (Account acc : validAccounts) {
+            mixedIds.add(acc.Id);
+        }
+        mixedIds.add(buildInvalidAccountId());
+        mixedIds.add(buildInvalidAccountId());
+
+        Test.startTest();
+        AccountHelper.updateAccounts(mixedIds);
+        Test.stopTest();
+
+        assertAnnualRevenueEqualsTarget(
+            new List<Id>{
+                validAccounts[0].Id,
+                validAccounts[1].Id,
+                validAccounts[2].Id,
+                validAccounts[3].Id,
+                validAccounts[4].Id
+            }
+        );
+    }
+
+    @IsTest
+    static void updateAccounts_validatesGovernorLimits() {
+        List<Account> bulkAccounts = createBulkTestAccounts(BULK_TEST_SIZE);
+        List<Id> accountIds = new List<Id>();
+        for (Account acc : bulkAccounts) {
+            accountIds.add(acc.Id);
+        }
+
+        Test.startTest();
+        Integer queriesBefore = Limits.getQueries();
+        Integer dmlBefore = Limits.getDMLStatements();
+        
+        AccountHelper.updateAccounts(accountIds);
+        
+        Integer queriesAfter = Limits.getQueries();
+        Integer dmlAfter = Limits.getDMLStatements();
+        Test.stopTest();
+
+        System.assert(
+            queriesAfter - queriesBefore <= 2,
+            'Should use minimal SOQL queries (1 for fetch, 1 for assertion).'
+        );
+        System.assert(
+            dmlAfter - dmlBefore == 1,
+            'Should use single DML statement for bulk update.'
+        );
+    }
+
     // Helper Methods
 
     /**
@@ -228,9 +330,13 @@ private class AccountHelperTest {
      * @return List of created Account records
      */
     private static List<Account> createBulkTestAccounts(Integer count) {
+        if (count <= 0) {
+            return new List<Account>();
+        }
+
         List<Account> accounts = new List<Account>();
         for (Integer i = 0; i < count; i++) {
-            accounts.add(new Account(Name = 'Bulk Test Account ' + i));
+            accounts.add(new Account(Name = TEST_ACCOUNT_NAME_PREFIX + ' ' + i));
         }
         insert accounts;
         return accounts;

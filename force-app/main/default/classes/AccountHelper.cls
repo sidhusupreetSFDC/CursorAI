@@ -1,11 +1,12 @@
 /**
- * @description Helper class that centralizes Account maintenance logic.
+ * @description Service class for Account operations.
  *              Provides bulkified methods for updating Account records with proper
  *              security enforcement and error handling.
+ *              Follows SOLID principles and Salesforce best practices.
  * @author Salesforce
  * @date 2025
  */
-public class AccountHelper {
+public with sharing class AccountHelper {
     /** @description Target Annual Revenue value to set on Account records */
     public static final Decimal TARGET_ANNUAL_REVENUE = 1000000;
     
@@ -28,22 +29,62 @@ public class AccountHelper {
      * @throws AccountHelperException if security checks fail or DML operations encounter errors
      */
     public static void updateAccounts(List<Id> accountIds) {
+        try {
+            validateInputs(accountIds);
+            
+            enforceAccountAccess();
+
+            Set<Id> uniqueAccountIds = deduplicateAccountIds(accountIds);
+            List<Account> accountsToUpdate = fetchAccounts(uniqueAccountIds);
+
+            if (accountsToUpdate.isEmpty()) {
+                return;
+            }
+
+            applyTargetRevenue(accountsToUpdate);
+            List<Account> sanitizedAccounts = sanitizeForUpdate(accountsToUpdate);
+            performBulkUpdate(sanitizedAccounts);
+        } catch (AccountHelperException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new AccountHelperException(
+                'Unexpected error occurred while updating accounts: ' + ex.getMessage(),
+                ex
+            );
+        }
+    }
+
+    /**
+     * @description Validates input parameters
+     * @param accountIds List of Account Ids to validate
+     */
+    private static void validateInputs(List<Id> accountIds) {
         if (accountIds == null || accountIds.isEmpty()) {
             return;
         }
+    }
 
-        enforceAccountAccess();
+    /**
+     * @description Removes duplicate Account Ids from the input list
+     * @param accountIds List of Account Ids that may contain duplicates
+     * @return Set of unique Account Ids
+     */
+    private static Set<Id> deduplicateAccountIds(List<Id> accountIds) {
+        return new Set<Id>(accountIds);
+    }
 
-        Set<Id> uniqueAccountIds = new Set<Id>(accountIds);
-        List<Account> accountsToUpdate = fetchAccounts(uniqueAccountIds);
-
-        if (accountsToUpdate.isEmpty()) {
+    /**
+     * @description Performs bulk update operation with error handling
+     * @param accountsToUpdate List of Account records to update
+     * @throws AccountHelperException if update operation fails
+     */
+    private static void performBulkUpdate(List<Account> accountsToUpdate) {
+        if (accountsToUpdate == null || accountsToUpdate.isEmpty()) {
             return;
         }
 
-        applyTargetRevenue(accountsToUpdate);
-        List<Account> sanitizedAccounts = sanitizeForUpdate(accountsToUpdate);
-        handleSaveResults(Database.update(sanitizedAccounts, false));
+        Database.SaveResult[] saveResults = Database.update(accountsToUpdate, false);
+        handleSaveResults(saveResults);
     }
 
     /**
@@ -79,6 +120,10 @@ public class AccountHelper {
      * @param accountsToUpdate List of Account records to update
      */
     private static void applyTargetRevenue(List<Account> accountsToUpdate) {
+        if (accountsToUpdate == null || accountsToUpdate.isEmpty()) {
+            return;
+        }
+
         for (Account accountRecord : accountsToUpdate) {
             if (accountRecord != null) {
                 accountRecord.AnnualRevenue = TARGET_ANNUAL_REVENUE;
