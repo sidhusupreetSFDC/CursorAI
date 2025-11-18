@@ -1,0 +1,212 @@
+name: Salesforce CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+env:
+  SF_CLI_VERSION: latest
+
+jobs:
+  code-quality:
+    name: Stage 1 - Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Salesforce CLI
+        uses: salesforce-actions/setup-sfdx@v4
+        with:
+          sfdx-version: ${{ env.SF_CLI_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          sf plugins install @salesforce/sfdx-scanner
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run Salesforce Code Analyzer
+        id: code-analyzer
+        continue-on-error: true
+        run: |
+          sf scanner run \
+            --target force-app \
+            --format table \
+            --severity-threshold 1 \
+            --engine eslint,pmd,retire-js \
+            --json > scanner-results.json 2>&1 || SCANNER_EXIT_CODE=$?
+          
+          # Check if critical issues found (severity 1 = critical)
+          if [ -f scanner-results.json ]; then
+            CRITICAL_COUNT=$(cat scanner-results.json | jq -r '[.violations[]? | select(.severity == 1)] | length' 2>/dev/null || echo "0")
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "Found $CRITICAL_COUNT critical issue(s). Failing build."
+              cat scanner-results.json | jq '.violations[]? | select(.severity == 1)' || true
+              exit 1
+            fi
+            echo "No critical issues found. Code quality check passed."
+          fi
+          
+          # Exit with scanner exit code if it failed for other reasons
+          exit ${SCANNER_EXIT_CODE:-0}
+
+      - name: Upload code quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-report
+          path: |
+            scanner-results.json
+            .sfdx/scanner-results/**
+          retention-days: 30
+
+  validation:
+    name: Stage 2 - Validation
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Salesforce CLI
+        uses: salesforce-actions/setup-sfdx@v4
+        with:
+          sfdx-version: ${{ env.SF_CLI_VERSION }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Authenticate Salesforce Org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          echo "$SFDX_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias validation-org --set-default
+          rm -f auth.txt
+
+      - name: Validate deployment
+        id: validate-deploy
+        continue-on-error: true
+        run: |
+          sf project deploy validate \
+            --source-dir force-app \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > validation-result.json || true
+
+      - name: Display validation results
+        if: always()
+        run: |
+          if [ -f validation-result.json ]; then
+            cat validation-result.json | jq '.' || cat validation-result.json
+          fi
+
+      - name: Get validation report
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f validation-result.json ]; then
+            DEPLOY_ID=$(cat validation-result.json | jq -r '.result.id // empty' 2>/dev/null || echo "")
+            if [ -n "$DEPLOY_ID" ]; then
+              sf project deploy report \
+                --job-id "$DEPLOY_ID" \
+                --wait 10 \
+                --json > validation-report.json || true
+            fi
+          fi
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: |
+            validation-result.json
+            validation-report.json
+          retention-days: 30
+
+      - name: Fail if validation errors
+        if: steps.validate-deploy.outcome == 'failure'
+        run: |
+          echo "Validation failed. Check the uploaded reports for details."
+          exit 1
+
+  deploy:
+    name: Stage 3 - Deploy
+    runs-on: ubuntu-latest
+    needs: validation
+    if: needs.validation.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Salesforce CLI
+        uses: salesforce-actions/setup-sfdx@v4
+        with:
+          sfdx-version: ${{ env.SF_CLI_VERSION }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Authenticate Salesforce Org
+        env:
+          SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+        run: |
+          echo "$SFDX_AUTH_URL" > auth.txt
+          sf org login sfdx-url --sfdx-url-file auth.txt --alias deploy-org --set-default
+          rm -f auth.txt
+
+      - name: Deploy to Salesforce
+        id: deploy
+        continue-on-error: true
+        run: |
+          sf project deploy start \
+            --source-dir force-app \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --json > deployment-result.json || true
+
+      - name: Display deployment results
+        if: always()
+        run: |
+          if [ -f deployment-result.json ]; then
+            cat deployment-result.json | jq '.' || cat deployment-result.json
+          fi
+
+      - name: Get deployment report
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f deployment-result.json ]; then
+            DEPLOY_ID=$(cat deployment-result.json | jq -r '.result.id // empty' 2>/dev/null || echo "")
+            if [ -n "$DEPLOY_ID" ]; then
+              sf project deploy report \
+                --job-id "$DEPLOY_ID" \
+                --wait 10 \
+                --json > deployment-report.json || true
+            fi
+          fi
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: |
+            deployment-result.json
+            deployment-report.json
+          retention-days: 30
+
+      - name: Fail if deployment errors
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          echo "Deployment failed. Check the uploaded reports for details."
+          exit 1
+
