@@ -11,9 +11,6 @@ on:
       - develop
   workflow_dispatch:
 
-env:
-  SF_CLI_VERSION: latest
-
 jobs:
   code-quality:
     name: Stage 1 - Code Quality
@@ -22,15 +19,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Salesforce CLI
-        uses: salesforce-actions/setup-sfdx@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          sfdx-version: ${{ env.SF_CLI_VERSION }}
+          node-version: '20'
 
-      - name: Install dependencies
+      - name: Install Salesforce CLI
         run: |
-          sf plugins install @salesforce/sfdx-scanner
-          sudo apt-get update && sudo apt-get install -y jq
+          echo "📦 Installing Salesforce CLI..."
+          npm install -g @salesforce/cli
+          sf --version
+
+      - name: Install Code Analyzer plugin
+        run: |
+          echo "📦 Installing Salesforce Code Analyzer plugin..."
+          sf plugins install @salesforce/sfdx-scanner@latest
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Run Salesforce Code Analyzer
         id: code-analyzer
@@ -78,10 +84,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Salesforce CLI
-        uses: salesforce-actions/setup-sfdx@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          sfdx-version: ${{ env.SF_CLI_VERSION }}
+          node-version: '20'
+
+      - name: Install Salesforce CLI
+        run: |
+          echo "📦 Installing Salesforce CLI..."
+          npm install -g @salesforce/cli
+          sf --version
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -218,10 +230,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Salesforce CLI
-        uses: salesforce-actions/setup-sfdx@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          sfdx-version: ${{ env.SF_CLI_VERSION }}
+          node-version: '20'
+
+      - name: Install Salesforce CLI
+        run: |
+          echo "📦 Installing Salesforce CLI..."
+          npm install -g @salesforce/cli
+          sf --version
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
