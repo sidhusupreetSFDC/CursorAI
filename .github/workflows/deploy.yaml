@@ -6,8 +6,58 @@ on:
       - main
 
 jobs:
+  code-quality:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install --global @salesforce/cli
+          sf --version
+
+      - name: Install Salesforce Code Analyzer Plugin
+        run: sf plugins install @salesforce/sfdx-scanner@latest
+
+      - name: Run Salesforce Code Analyzer
+        id: run-code-analyzer
+        run: |
+          sf scanner run \
+            --normalize-severity \
+            --target force-app \
+            --outfile code-analyzer-results.json \
+            --format json || SCANNER_EXIT_CODE=$?
+          
+          if [ -f code-analyzer-results.json ]; then
+            NUM_CRITICAL=$(node -e "const fs=require('fs');const data=JSON.parse(fs.readFileSync('code-analyzer-results.json','utf8'));console.log(data.summary?.severityCounts?.[1] || 0);" 2>/dev/null || echo "0")
+            echo "num-sev1-violations=$NUM_CRITICAL" >> $GITHUB_OUTPUT
+            echo "Critical violations found: $NUM_CRITICAL"
+            
+            if [ "$NUM_CRITICAL" -gt 0 ]; then
+              echo "❌ Critical violations detected. Failing the build."
+              exit 1
+            fi
+          fi
+          
+          exit ${SCANNER_EXIT_CODE:-0}
+
+      - name: Upload Code Analyzer Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-analyzer-results
+          path: code-analyzer-results.json
+
   deploy:
     if: github.ref == 'refs/heads/main'
+    needs: code-quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
