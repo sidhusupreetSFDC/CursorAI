@@ -1,18 +1,19 @@
-/**
- * Trigger for Account object
- * Delegates all logic to AccountTriggerHandler following Trigger Handler pattern
- * 
- * @author Salesforce Developer
- * @date 2024
- */
 trigger AccountTrigger on Account (before insert, after insert) {
-    AccountTriggerHandler handler = new AccountTriggerHandler();
-    
-    if (Trigger.isBefore && Trigger.isInsert) {
-        handler.handleBeforeInsert(Trigger.new);
+    if(Trigger.isBefore && Trigger.isInsert) {
+        for(Account acc : Trigger.new) {
+            if(acc.AnnualRevenue == null) {
+                acc.AnnualRevenue = 0;
+            }
+        }
     }
     
-    if (Trigger.isAfter && Trigger.isInsert) {
-        handler.handleAfterInsert(Trigger.new);
+    if(Trigger.isAfter && Trigger.isInsert) {
+        List<Task> tasks = new List<Task>();
+        for(Account acc : Trigger.new) {
+            Task t = new Task();
+            t.Subject = 'Follow up on new account';
+            t.WhatId = acc.Id;
+            insert t;
+        }
     }
 }
