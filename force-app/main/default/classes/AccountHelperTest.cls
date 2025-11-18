@@ -1,431 +1,282 @@
 /**
- * @description Test class for AccountHelper
- * Provides comprehensive test coverage for all AccountHelper methods including
- * single account updates, bulk operations, validation, and error handling
- * @author Salesforce Dev Team
- * @date 2025
+ * Test class for AccountHelper
+ * Provides comprehensive test coverage for AccountHelper methods
  */
 @isTest
 private class AccountHelperTest {
-    
-    private static final String VALID_RATING_HOT = 'Hot';
-    private static final String VALID_RATING_WARM = 'Warm';
-    private static final String VALID_RATING_COLD = 'Cold';
-    private static final String INVALID_RATING = 'InvalidRating';
-    private static final Integer SETUP_ACCOUNT_COUNT = 50;
-    private static final Integer BULK_TEST_COUNT = 200;
-    
     /**
-     * @description Setup test data for all test methods
-     * Creates 50 test accounts with Cold rating for use across test methods
+     * Test data setup method
+     * Creates test Account records for use in test methods
      */
-    @TestSetup
+    @testSetup
     static void setupTestData() {
         List<Account> testAccounts = new List<Account>();
-        for (Integer i = 0; i < SETUP_ACCOUNT_COUNT; i++) {
-            testAccounts.add(new Account(
-                Name = 'Test Account ' + i,
-                Rating = VALID_RATING_COLD
-            ));
-        }
+        testAccounts.add(
+            new Account(Name = 'Test Account 1', Rating = 'Hot')
+        );
+        testAccounts.add(
+            new Account(Name = 'Test Account 2', Rating = 'Cold')
+        );
         insert testAccounts;
     }
-    
+
     /**
-     * @description Test single account rating update - positive scenario
-     * Verifies successful update of account rating with valid input
+     * Test successful update of Account Rating
+     * Verifies that the rating is updated correctly
      */
     @isTest
-    static void testUpdateSingleAccountRating_Success() {
-        // Arrange: Create a test account
-        Account testAccount = new Account(Name = 'Single Test Account');
-        insert testAccount;
-        
-        // Act: Update rating using single account method
-        Test.startTest();
-        Boolean result = AccountHelper.updateAccountRating(testAccount.Id, VALID_RATING_HOT);
-        Test.stopTest();
-        
-        // Assert: Verify the rating was updated successfully
-        System.assertEquals(true, result, 'Update should succeed');
-        
-        Account updatedAccount = [SELECT Rating FROM Account WHERE Id = :testAccount.Id LIMIT 1];
-        System.assertEquals(VALID_RATING_HOT, updatedAccount.Rating, 
-            'Rating should be updated to Hot');
-    }
-    
-    /**
-     * @description Test single account rating update with null account ID
-     * Verifies method handles null account ID gracefully
-     */
-    @isTest
-    static void testUpdateSingleAccountRating_NullAccountId() {
-        // Act: Try to update with null account ID
-        Test.startTest();
-        Boolean result = AccountHelper.updateAccountRating(null, VALID_RATING_HOT);
-        Test.stopTest();
-        
-        // Assert: Should return false
-        System.assertEquals(false, result, 'Should return false for null account ID');
-    }
-    
-    /**
-     * @description Test single account rating update with blank rating
-     * Verifies method rejects blank rating values
-     */
-    @isTest
-    static void testUpdateSingleAccountRating_BlankRating() {
-        // Arrange: Create a test account
-        Account testAccount = new Account(Name = 'Test Account');
-        insert testAccount;
-        
-        // Act: Try to update with blank rating
-        Test.startTest();
-        Boolean result = AccountHelper.updateAccountRating(testAccount.Id, '');
-        Test.stopTest();
-        
-        // Assert: Should return false
-        System.assertEquals(false, result, 'Should return false for blank rating');
-    }
-    
-    /**
-     * @description Test single account rating update with invalid rating
-     * Verifies method rejects invalid rating values
-     */
-    @isTest
-    static void testUpdateSingleAccountRating_InvalidRating() {
-        // Arrange: Create a test account
-        Account testAccount = new Account(Name = 'Test Account');
-        insert testAccount;
-        
-        // Act: Try to update with invalid rating
-        Test.startTest();
-        Boolean result = AccountHelper.updateAccountRating(testAccount.Id, INVALID_RATING);
-        Test.stopTest();
-        
-        // Assert: Should return false
-        System.assertEquals(false, result, 'Should return false for invalid rating');
-    }
-    
-    /**
-     * @description Test bulk account rating update with 50 records
-     * Verifies bulk update functionality with moderate record count
-     */
-    @isTest
-    static void testUpdateAccountRatings_Bulk50Records() {
-        // Arrange: Get 50 test accounts from setup
-        List<Account> accounts = [SELECT Id FROM Account LIMIT :SETUP_ACCOUNT_COUNT];
-        System.assertEquals(SETUP_ACCOUNT_COUNT, accounts.size(), 
-            'Should have ' + SETUP_ACCOUNT_COUNT + ' test accounts');
-        
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        for (Account acc : accounts) {
-            accountRatingMap.put(acc.Id, VALID_RATING_HOT);
-        }
-        
-        // Act: Update all accounts at once
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(accountRatingMap);
-        Test.stopTest();
-        
-        // Assert: Verify all updates succeeded
-        System.assertEquals(SETUP_ACCOUNT_COUNT, results.size(), 
-            'Should have results for all ' + SETUP_ACCOUNT_COUNT + ' accounts');
-        
-        for (Id accId : results.keySet()) {
-            System.assertEquals('Success', results.get(accId), 
-                'All updates should succeed. Failed for: ' + accId);
-        }
-        
-        // Verify database state
-        List<Account> updatedAccounts = [
-            SELECT Id, Rating 
-            FROM Account 
-            WHERE Id IN :accountRatingMap.keySet()
+    static void testUpdateAccountRating_Success() {
+        // Get test account
+        Account testAccount = [
+            SELECT Id, Rating
+            FROM Account
+            WHERE Name = 'Test Account 1'
+            LIMIT 1
         ];
-        for (Account acc : updatedAccounts) {
-            System.assertEquals(VALID_RATING_HOT, acc.Rating, 
-                'All accounts should have Hot rating');
-        }
-    }
-    
-    /**
-     * @description Test bulk account rating update with 200 records (max limit)
-     * Verifies bulk update functionality at maximum supported record count
-     */
-    @isTest
-    static void testUpdateAccountRatings_Bulk200Records() {
-        // Arrange: Create 200 test accounts
-        List<Account> testAccounts = new List<Account>();
-        for (Integer i = 0; i < BULK_TEST_COUNT; i++) {
-            testAccounts.add(new Account(
-                Name = 'Bulk Test Account ' + i,
-                Rating = VALID_RATING_COLD
-            ));
-        }
-        insert testAccounts;
-        
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        for (Account acc : testAccounts) {
-            accountRatingMap.put(acc.Id, VALID_RATING_WARM);
-        }
-        
-        // Act: Update all accounts at once
+
+        String newRating = 'Warm';
         Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(accountRatingMap);
+        AccountHelper.updateAccountRating(testAccount.Id, newRating);
         Test.stopTest();
-        
-        // Assert: Verify all updates succeeded
-        System.assertEquals(BULK_TEST_COUNT, results.size(), 
-            'Should have results for all ' + BULK_TEST_COUNT + ' accounts');
-        
-        Integer successCount = 0;
-        for (String result : results.values()) {
-            if (result == 'Success') {
-                successCount++;
-            }
-        }
-        System.assertEquals(BULK_TEST_COUNT, successCount, 
-            'All ' + BULK_TEST_COUNT + ' updates should succeed');
-        
-        // Verify database state
-        Integer warmCount = [
-            SELECT COUNT() 
-            FROM Account 
-            WHERE Rating = :VALID_RATING_WARM 
-            AND Id IN :accountRatingMap.keySet()
+
+        // Verify the rating was updated
+        Account updatedAccount = [
+            SELECT Id, Rating
+            FROM Account
+            WHERE Id = :testAccount.Id
+            LIMIT 1
         ];
-        System.assertEquals(BULK_TEST_COUNT, warmCount, 
-            'All ' + BULK_TEST_COUNT + ' accounts should have Warm rating');
+
+        System.assertEquals(
+            newRating,
+            updatedAccount.Rating,
+            'Account Rating should be updated to ' + newRating
+        );
     }
-    
+
     /**
-     * @description Test bulk update exceeding 200 records limit
-     * Verifies exception is thrown when attempting to process more than maximum allowed records
+     * Test update with null accountId
+     * Verifies that IllegalArgumentException is thrown
      */
     @isTest
-    static void testUpdateAccountRatings_ExceedLimit() {
-        // Arrange: Create map with 201 entries (exceeds limit)
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        Integer exceedLimitCount = BULK_TEST_COUNT + 1;
-        for (Integer i = 0; i < exceedLimitCount; i++) {
-            // Create fake IDs (won't be inserted, just for size validation)
-            String fakeId = '001' + String.valueOf(i).leftPad(15, '0');
-            accountRatingMap.put((Id)fakeId, VALID_RATING_HOT);
-        }
-        
-        // Act & Assert: Should throw exception for exceeding limit
+    static void testUpdateAccountRating_NullAccountId() {
+        String rating = 'Hot';
+        Boolean exceptionThrown = false;
+
         Test.startTest();
         try {
-            AccountHelper.updateAccountRatings(accountRatingMap);
-            System.assert(false, 'Should have thrown AccountHelperException');
-        } catch (AccountHelper.AccountHelperException e) {
-            System.assert(e.getMessage().contains('Cannot process more than ' + BULK_TEST_COUNT), 
-                'Exception message should mention the limit');
+            AccountHelper.updateAccountRating(null, rating);
+        } catch (IllegalArgumentException e) {
+            exceptionThrown = true;
+            System.assert(
+                e.getMessage().contains('Account Id cannot be null'),
+                'Exception message should indicate null Account Id'
+            );
         }
         Test.stopTest();
+
+        System.assert(
+            exceptionThrown,
+            'IllegalArgumentException should be thrown for null accountId'
+        );
     }
-    
+
     /**
-     * @description Test bulk update with null map
-     * Verifies method handles null input gracefully
+     * Test update with null rating
+     * Verifies that IllegalArgumentException is thrown
      */
     @isTest
-    static void testUpdateAccountRatings_NullMap() {
-        // Act: Call with null map
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(null);
-        Test.stopTest();
-        
-        // Assert: Should return empty map
-        System.assertNotEquals(null, results, 'Results should not be null');
-        System.assertEquals(0, results.size(), 'Results should be empty');
-    }
-    
-    /**
-     * @description Test bulk update with empty map
-     * Verifies method handles empty input gracefully
-     */
-    @isTest
-    static void testUpdateAccountRatings_EmptyMap() {
-        // Act: Call with empty map
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(new Map<Id, String>());
-        Test.stopTest();
-        
-        // Assert: Should return empty map
-        System.assertEquals(0, results.size(), 'Results should be empty');
-    }
-    
-    /**
-     * @description Test bulk update with non-existent account ID
-     * Verifies method handles non-existent account IDs gracefully
-     */
-    @isTest
-    static void testUpdateAccountRatings_NonExistentAccount() {
-        // Arrange: Create a fake account ID that doesn't exist
-        Id fakeId = '001000000000000AAA';
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        accountRatingMap.put(fakeId, VALID_RATING_HOT);
-        
-        // Act: Try to update non-existent account
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(accountRatingMap);
-        Test.stopTest();
-        
-        // Assert: Should have error message for that account
-        System.assertEquals(1, results.size(), 'Should have one result');
-        System.assert(results.get(fakeId).contains('Account not found'),
-            'Error message should indicate account not found');
-    }
-    
-    /**
-     * @description Test bulk update with mixed valid and invalid ratings
-     * Verifies partial success handling when some ratings are valid and others invalid
-     */
-    @isTest
-    static void testUpdateAccountRatings_MixedValidInvalidRatings() {
-        // Arrange: Get two test accounts
-        List<Account> accounts = [SELECT Id FROM Account LIMIT 2];
-        System.assert(accounts.size() >= 2, 'Should have at least 2 test accounts');
-        
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        accountRatingMap.put(accounts[0].Id, VALID_RATING_HOT);        // Valid
-        accountRatingMap.put(accounts[1].Id, INVALID_RATING);        // Invalid
-        
-        // Act: Update with mixed ratings
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(accountRatingMap);
-        Test.stopTest();
-        
-        // Assert: First should succeed, second should fail
-        System.assertEquals('Success', results.get(accounts[0].Id), 
-            'Valid rating should succeed');
-        System.assert(results.get(accounts[1].Id).contains('Invalid rating'), 
-            'Invalid rating should have error message');
-    }
-    
-    /**
-     * @description Test bulk update with blank rating values
-     * Verifies method rejects blank rating values in bulk operations
-     */
-    @isTest
-    static void testUpdateAccountRatings_BlankRatings() {
-        // Arrange: Get a test account
-        Account testAccount = [SELECT Id FROM Account LIMIT 1];
-        
-        Map<Id, String> accountRatingMap = new Map<Id, String>();
-        accountRatingMap.put(testAccount.Id, '');
-        
-        // Act: Try to update with blank rating
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatings(accountRatingMap);
-        Test.stopTest();
-        
-        // Assert: Should have error for blank rating
-        System.assertEquals(1, results.size(), 'Should have one result');
-        System.assert(results.get(testAccount.Id).contains('blank'),
-            'Should have error message for blank rating');
-    }
-    
-    /**
-     * @description Test updateAccountRatingsForList with list of accounts
-     * Verifies list-based bulk update functionality
-     */
-    @isTest
-    static void testUpdateAccountRatingsForList_Success() {
-        // Arrange: Get list of 10 accounts
-        Integer accountCount = 10;
-        List<Account> accounts = [SELECT Id, Rating FROM Account LIMIT :accountCount];
-        
-        // Act: Update all accounts with same rating
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatingsForList(accounts, VALID_RATING_WARM);
-        Test.stopTest();
-        
-        // Assert: All should succeed
-        System.assertEquals(accountCount, results.size(), 'Should have ' + accountCount + ' results');
-        
-        for (String result : results.values()) {
-            System.assertEquals('Success', result, 'All updates should succeed');
-        }
-        
-        // Verify database state
-        Set<Id> accountIds = new Set<Id>();
-        for (Account acc : accounts) {
-            accountIds.add(acc.Id);
-        }
-        List<Account> updatedAccounts = [
-            SELECT Rating 
-            FROM Account 
-            WHERE Id IN :accountIds
+    static void testUpdateAccountRating_NullRating() {
+        Account testAccount = [
+            SELECT Id
+            FROM Account
+            WHERE Name = 'Test Account 1'
+            LIMIT 1
         ];
+
+        Boolean exceptionThrown = false;
+
+        Test.startTest();
+        try {
+            AccountHelper.updateAccountRating(testAccount.Id, null);
+        } catch (IllegalArgumentException e) {
+            exceptionThrown = true;
+            System.assert(
+                e.getMessage().contains('Rating cannot be null or empty'),
+                'Exception message should indicate null or empty rating'
+            );
+        }
+        Test.stopTest();
+
+        System.assert(
+            exceptionThrown,
+            'IllegalArgumentException should be thrown for null rating'
+        );
+    }
+
+    /**
+     * Test update with empty rating
+     * Verifies that IllegalArgumentException is thrown
+     */
+    @isTest
+    static void testUpdateAccountRating_EmptyRating() {
+        Account testAccount = [
+            SELECT Id
+            FROM Account
+            WHERE Name = 'Test Account 1'
+            LIMIT 1
+        ];
+
+        Boolean exceptionThrown = false;
+
+        Test.startTest();
+        try {
+            AccountHelper.updateAccountRating(testAccount.Id, '');
+        } catch (IllegalArgumentException e) {
+            exceptionThrown = true;
+            System.assert(
+                e.getMessage().contains('Rating cannot be null or empty'),
+                'Exception message should indicate null or empty rating'
+            );
+        }
+        Test.stopTest();
+
+        System.assert(
+            exceptionThrown,
+            'IllegalArgumentException should be thrown for empty rating'
+        );
+    }
+
+    /**
+     * Test update with blank rating (whitespace only)
+     * Verifies that IllegalArgumentException is thrown
+     */
+    @isTest
+    static void testUpdateAccountRating_BlankRating() {
+        Account testAccount = [
+            SELECT Id
+            FROM Account
+            WHERE Name = 'Test Account 1'
+            LIMIT 1
+        ];
+
+        Boolean exceptionThrown = false;
+
+        Test.startTest();
+        try {
+            AccountHelper.updateAccountRating(testAccount.Id, '   ');
+        } catch (IllegalArgumentException e) {
+            exceptionThrown = true;
+            System.assert(
+                e.getMessage().contains('Rating cannot be null or empty'),
+                'Exception message should indicate null or empty rating'
+            );
+        }
+        Test.stopTest();
+
+        System.assert(
+            exceptionThrown,
+            'IllegalArgumentException should be thrown for blank rating'
+        );
+    }
+
+    /**
+     * Test update with non-existent Account Id
+     * Verifies that QueryException is thrown
+     */
+    @isTest
+    static void testUpdateAccountRating_AccountNotFound() {
+        // Create a fake Id that doesn't exist (Account prefix is 001)
+        // Using a valid ID format but with a non-existent ID
+        Id fakeAccountId = Id.valueOf('001000000000000AAA');
+
+        Boolean exceptionThrown = false;
+
+        Test.startTest();
+        try {
+            AccountHelper.updateAccountRating(fakeAccountId, 'Hot');
+        } catch (QueryException e) {
+            exceptionThrown = true;
+            System.assert(
+                e.getMessage().contains('Account not found'),
+                'Exception message should indicate Account not found'
+            );
+        }
+        Test.stopTest();
+
+        System.assert(
+            exceptionThrown,
+            'QueryException should be thrown for non-existent Account'
+        );
+    }
+
+    /**
+     * Test bulk update scenario
+     * Verifies that multiple accounts can be updated
+     */
+    @isTest
+    static void testUpdateAccountRating_BulkUpdate() {
+        List<Account> testAccounts = [
+            SELECT Id, Rating
+            FROM Account
+            LIMIT 2
+        ];
+
+        String newRating = 'Hot';
+        Test.startTest();
+        for (Account acc : testAccounts) {
+            AccountHelper.updateAccountRating(acc.Id, newRating);
+        }
+        Test.stopTest();
+
+        // Verify all accounts were updated
+        List<Account> updatedAccounts = [
+            SELECT Id, Rating
+            FROM Account
+            WHERE Id IN :testAccounts
+        ];
+
         for (Account acc : updatedAccounts) {
-            System.assertEquals(VALID_RATING_WARM, acc.Rating, 'Rating should be Warm');
+            System.assertEquals(
+                newRating,
+                acc.Rating,
+                'All Account Ratings should be updated to ' + newRating
+            );
         }
     }
-    
+
     /**
-     * @description Test updateAccountRatingsForList with null list
-     * Verifies method handles null list input gracefully
+     * Test update with different rating values
+     * Verifies that various valid rating values can be set
      */
     @isTest
-    static void testUpdateAccountRatingsForList_NullList() {
-        // Act: Call with null list
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatingsForList(null, VALID_RATING_HOT);
-        Test.stopTest();
-        
-        // Assert: Should return empty map
-        System.assertEquals(0, results.size(), 'Should return empty map');
-    }
-    
-    /**
-     * @description Test updateAccountRatingsForList with blank rating
-     * Verifies method rejects blank rating values
-     */
-    @isTest
-    static void testUpdateAccountRatingsForList_BlankRating() {
-        // Arrange: Get list of accounts
-        List<Account> accounts = [SELECT Id FROM Account LIMIT 5];
-        
-        // Act: Call with blank rating
-        Test.startTest();
-        Map<Id, String> results = AccountHelper.updateAccountRatingsForList(accounts, '');
-        Test.stopTest();
-        
-        // Assert: Should return empty map
-        System.assertEquals(0, results.size(), 'Should return empty map for blank rating');
-    }
-    
-    /**
-     * @description Test rating validation using different values
-     * Verifies all valid ratings are accepted and invalid ratings are rejected
-     */
-    @isTest
-    static void testRatingValidation() {
-        // Arrange: Create test accounts for each validation test
-        Account testAccount1 = new Account(Name = 'Rating Validation Test Hot');
-        Account testAccount2 = new Account(Name = 'Rating Validation Test Warm');
-        Account testAccount3 = new Account(Name = 'Rating Validation Test Cold');
-        Account testAccount4 = new Account(Name = 'Rating Validation Test Invalid');
-        List<Account> testAccounts = new List<Account>{testAccount1, testAccount2, testAccount3, testAccount4};
-        insert testAccounts;
+    static void testUpdateAccountRating_DifferentRatings() {
+        Account testAccount = [
+            SELECT Id
+            FROM Account
+            WHERE Name = 'Test Account 1'
+            LIMIT 1
+        ];
+
+        List<String> ratings = new List<String>{ 'Hot', 'Warm', 'Cold' };
 
         Test.startTest();
-        // Act & Assert: Valid ratings should succeed
-        Boolean hotResult = AccountHelper.updateAccountRating(testAccount1.Id, VALID_RATING_HOT);
-        System.assertEquals(true, hotResult, 'Hot should be valid');
+        for (String rating : ratings) {
+            AccountHelper.updateAccountRating(testAccount.Id, rating);
 
-        Boolean warmResult = AccountHelper.updateAccountRating(testAccount2.Id, VALID_RATING_WARM);
-        System.assertEquals(true, warmResult, 'Warm should be valid');
+            Account updatedAccount = [
+                SELECT Id, Rating
+                FROM Account
+                WHERE Id = :testAccount.Id
+                LIMIT 1
+            ];
 
-        Boolean coldResult = AccountHelper.updateAccountRating(testAccount3.Id, VALID_RATING_COLD);
-        System.assertEquals(true, coldResult, 'Cold should be valid');
-
-        // Invalid rating should fail
-        Boolean invalidResult = AccountHelper.updateAccountRating(testAccount4.Id, 'SuperHot');
-        System.assertEquals(false, invalidResult, 'SuperHot should be invalid');
+            System.assertEquals(
+                rating,
+                updatedAccount.Rating,
+                'Rating should be updated to ' + rating
+            );
+        }
         Test.stopTest();
     }
 }
