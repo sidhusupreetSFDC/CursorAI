@@ -99,8 +99,8 @@ public class AccountHelper {
             accountsToUpdate
         );
 
-        Set<String> removedFields = accessDecision.getRemovedFields();
-        if (!removedFields.isEmpty() && removedFields.contains('AnnualRevenue')) {
+        Map<String, Set<String>> removedFields = accessDecision.getRemovedFields();
+        if (!removedFields.isEmpty() && removedFields.containsKey('AnnualRevenue')) {
             throw new AccountHelperException(ERROR_FIELD_REMOVED_BY_SECURITY);
         }
 
